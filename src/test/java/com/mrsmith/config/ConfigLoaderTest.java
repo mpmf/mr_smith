@@ -9,8 +9,10 @@ import java.nio.file.Path;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConfigLoaderTest {
 
@@ -20,44 +22,43 @@ class ConfigLoaderTest {
     @Test
     void missingApiKeyFailsFast() {
         assertThrows(ConfigException.class,
-                () -> ConfigLoader.load(noFile(), null, null, null, null, Map.of()));
+                () -> ConfigLoader.load(noFile(), CliConfig.empty(), Map.of()));
     }
 
     @Test
     void defaultsWhenNoFileEnvOrCli() {
-        AppConfig config = ConfigLoader.load(noFile(), null, null, null, null,
-                Map.of("OPENAI_API_KEY", "sk-x"));
+        AppConfig config = ConfigLoader.load(noFile(), CliConfig.empty(), Map.of("OPENAI_API_KEY", "sk-x"));
         assertEquals("gpt-4o-mini", config.model());
         assertEquals("https://api.openai.com/v1", config.baseUrl());
         assertNull(config.systemPrompt());
+        assertNull(config.maxContextTokens());
+        assertTrue(config.includeUsage());
     }
 
     @Test
     void envApiKeyIsAccepted() {
-        AppConfig config = ConfigLoader.load(noFile(), null, null, null, null,
-                Map.of("OPENAI_API_KEY", "sk-env"));
+        AppConfig config = ConfigLoader.load(noFile(), CliConfig.empty(), Map.of("OPENAI_API_KEY", "sk-env"));
         assertEquals("sk-env", config.apiKey());
     }
 
     @Test
     void fileApiKeyIsUsedWhenEnvAndCliAbsent() throws IOException {
         Path file = writeConfig("{ \"apiKey\": \"sk-file\" }");
-        AppConfig config = ConfigLoader.load(file, null, null, null, null, Map.of());
+        AppConfig config = ConfigLoader.load(file, CliConfig.empty(), Map.of());
         assertEquals("sk-file", config.apiKey());
     }
 
     @Test
     void envOverridesFileApiKey() throws IOException {
         Path file = writeConfig("{ \"apiKey\": \"sk-file\" }");
-        AppConfig config = ConfigLoader.load(file, null, null, null, null,
-                Map.of("OPENAI_API_KEY", "sk-env"));
+        AppConfig config = ConfigLoader.load(file, CliConfig.empty(), Map.of("OPENAI_API_KEY", "sk-env"));
         assertEquals("sk-env", config.apiKey());
     }
 
     @Test
     void envOverridesFile() throws IOException {
         Path file = writeConfig("{ \"model\": \"from-file\", \"baseUrl\": \"https://file.example\", \"systemPrompt\": \"file prompt\" }");
-        AppConfig config = ConfigLoader.load(file, null, null, null, null,
+        AppConfig config = ConfigLoader.load(file, CliConfig.empty(),
                 Map.of("OPENAI_API_KEY", "sk-env", "MRSMITH_MODEL", "from-env"));
         assertEquals("from-env", config.model());
         assertEquals("https://file.example", config.baseUrl());
@@ -67,7 +68,8 @@ class ConfigLoaderTest {
     @Test
     void cliOverridesEnv() throws IOException {
         Path file = writeConfig("{ \"model\": \"from-file\" }");
-        AppConfig config = ConfigLoader.load(file, "from-cli", null, null, "sk-cli",
+        CliConfig cli = new CliConfig("from-cli", null, null, "sk-cli", null, null);
+        AppConfig config = ConfigLoader.load(file, cli,
                 Map.of("OPENAI_API_KEY", "sk-env", "MRSMITH_MODEL", "from-env"));
         assertEquals("from-cli", config.model());
         assertEquals("sk-cli", config.apiKey());
@@ -76,7 +78,7 @@ class ConfigLoaderTest {
     @Test
     void malformedFileFallsBackToDefaults() throws IOException {
         Path file = writeConfig("not valid json {{{");
-        AppConfig config = ConfigLoader.load(file, null, null, null, "sk-x", Map.of());
+        AppConfig config = ConfigLoader.load(file, CliConfig.empty(), Map.of("OPENAI_API_KEY", "sk-x"));
         assertEquals("gpt-4o-mini", config.model());
         assertEquals("sk-x", config.apiKey());
     }
@@ -84,8 +86,40 @@ class ConfigLoaderTest {
     @Test
     void baseUrlTrailingSlashIsStripped() throws IOException {
         Path file = writeConfig("{ \"baseUrl\": \"https://example.com/v1/\" }");
-        AppConfig config = ConfigLoader.load(file, null, null, null, "sk-x", Map.of());
+        AppConfig config = ConfigLoader.load(file, CliConfig.empty(), Map.of("OPENAI_API_KEY", "sk-x"));
         assertEquals("https://example.com/v1", config.baseUrl());
+    }
+
+    @Test
+    void maxContextAndIncludeUsageReadFromFile() throws IOException {
+        Path file = writeConfig("{ \"maxContextTokens\": 128000, \"includeUsage\": false }");
+        AppConfig config = ConfigLoader.load(file, CliConfig.empty(), Map.of("OPENAI_API_KEY", "sk-x"));
+        assertEquals(128000, config.maxContextTokens());
+        assertFalse(config.includeUsage());
+    }
+
+    @Test
+    void cliOverridesFileForMaxContextAndIncludeUsage() throws IOException {
+        Path file = writeConfig("{ \"maxContextTokens\": 128000, \"includeUsage\": false }");
+        CliConfig cli = new CliConfig(null, null, null, null, 8192, true);
+        AppConfig config = ConfigLoader.load(file, cli, Map.of("OPENAI_API_KEY", "sk-x"));
+        assertEquals(8192, config.maxContextTokens());
+        assertTrue(config.includeUsage());
+    }
+
+    @Test
+    void envProvidesMaxContextAndIncludeUsage() throws IOException {
+        AppConfig config = ConfigLoader.load(noFile(), CliConfig.empty(),
+                Map.of("OPENAI_API_KEY", "sk-x", "MRSMITH_MAX_CONTEXT", "8192", "MRSMITH_INCLUDE_USAGE", "false"));
+        assertEquals(8192, config.maxContextTokens());
+        assertFalse(config.includeUsage());
+    }
+
+    @Test
+    void invalidEnvMaxContextIsIgnored() throws IOException {
+        AppConfig config = ConfigLoader.load(noFile(), CliConfig.empty(),
+                Map.of("OPENAI_API_KEY", "sk-x", "MRSMITH_MAX_CONTEXT", "abc"));
+        assertNull(config.maxContextTokens());
     }
 
     private Path noFile() {

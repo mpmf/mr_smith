@@ -2,6 +2,7 @@ package com.mrsmith.cli;
 
 import com.mrsmith.chat.ChatSession;
 import com.mrsmith.config.AppConfig;
+import com.mrsmith.config.CliConfig;
 import com.mrsmith.config.ConfigException;
 import com.mrsmith.config.ConfigLoader;
 import com.mrsmith.io.IO;
@@ -30,11 +31,18 @@ public class ChatCommand implements Callable<Integer> {
     @Option(names = "--api-key", description = "API key (overrides OPENAI_API_KEY).")
     private String apiKey;
 
+    @Option(names = "--max-context", description = "Context window token limit (overrides config file and env).")
+    private Integer maxContext;
+
+    @Option(names = "--include-usage", description = "Request usage stats from the provider (default true).")
+    private Boolean includeUsage;
+
     @Override
     public Integer call() {
         AppConfig config;
         try {
-            config = ConfigLoader.load(model, baseUrl, systemPrompt, apiKey);
+            config = ConfigLoader.load(
+                    new CliConfig(model, baseUrl, systemPrompt, apiKey, maxContext, includeUsage));
         } catch (ConfigException e) {
             System.err.println(e.getMessage());
             return 1;

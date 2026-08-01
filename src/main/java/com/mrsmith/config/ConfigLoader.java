@@ -18,16 +18,17 @@ public final class ConfigLoader {
     private ConfigLoader() {
     }
 
-    public static AppConfig load(String cliModel, String cliBaseUrl, String cliSystemPrompt, String cliApiKey) {
-        return load(DEFAULT_CONFIG_PATH, cliModel, cliBaseUrl, cliSystemPrompt, cliApiKey, System.getenv());
+    public static AppConfig load(CliConfig cli) {
+        return load(DEFAULT_CONFIG_PATH, cli, System.getenv());
     }
 
-    public static AppConfig load(Path configFile, String cliModel, String cliBaseUrl,
-                                 String cliSystemPrompt, String cliApiKey, Map<String, String> env) {
+    public static AppConfig load(Path configFile, CliConfig cli, Map<String, String> env) {
         String fileModel = null;
         String fileBaseUrl = null;
         String fileSystemPrompt = null;
         String fileApiKey = null;
+        Integer fileMaxContext = null;
+        Boolean fileIncludeUsage = null;
 
         if (Files.exists(configFile)) {
             try {
@@ -44,17 +45,28 @@ public final class ConfigLoader {
                 if (root.hasNonNull("apiKey")) {
                     fileApiKey = root.get("apiKey").asText();
                 }
+                if (root.hasNonNull("maxContextTokens")) {
+                    fileMaxContext = root.get("maxContextTokens").asInt();
+                }
+                if (root.hasNonNull("includeUsage")) {
+                    fileIncludeUsage = root.get("includeUsage").asBoolean();
+                }
             } catch (IOException e) {
                 System.err.println("Warning: could not read config file " + configFile
                         + " (" + e.getMessage() + "). Falling back to env vars and defaults.");
             }
         }
 
-        String model = firstNonNull(cliModel, env.get("MRSMITH_MODEL"), fileModel, "gpt-4o-mini");
-        String baseUrl = firstNonNull(cliBaseUrl, env.get("MRSMITH_BASE_URL"), fileBaseUrl,
+        String model = firstNonNull(cli.model(), env.get("MRSMITH_MODEL"), fileModel, "gpt-4o-mini");
+        String baseUrl = firstNonNull(cli.baseUrl(), env.get("MRSMITH_BASE_URL"), fileBaseUrl,
                 "https://api.openai.com/v1");
-        String systemPrompt = firstNonNull(cliSystemPrompt, fileSystemPrompt);
-        String apiKey = firstNonNull(cliApiKey, env.get("OPENAI_API_KEY"), fileApiKey);
+        String systemPrompt = firstNonNull(cli.systemPrompt(), fileSystemPrompt);
+        String apiKey = firstNonNull(cli.apiKey(), env.get("OPENAI_API_KEY"), fileApiKey);
+
+        Integer maxContext = firstNonNullValue(cli.maxContextTokens(),
+                parseEnvInt(env.get("MRSMITH_MAX_CONTEXT")), fileMaxContext);
+        Boolean includeUsage = firstNonNullValue(cli.includeUsage(),
+                parseEnvBool(env.get("MRSMITH_INCLUDE_USAGE")), fileIncludeUsage);
 
         if (apiKey == null) {
             throw new ConfigException(
@@ -62,7 +74,8 @@ public final class ConfigLoader {
                             + "(e.g. export OPENAI_API_KEY=sk-...) or pass it with --api-key.");
         }
 
-        return new AppConfig(apiKey, baseUrl, model, systemPrompt);
+        return new AppConfig(apiKey, baseUrl, model, systemPrompt,
+                maxContext, includeUsage == null || includeUsage);
     }
 
     private static String firstNonNull(String... values) {
@@ -72,5 +85,32 @@ public final class ConfigLoader {
             }
         }
         return null;
+    }
+
+    private static <T> T firstNonNullValue(T... values) {
+        for (T value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private static Integer parseEnvInt(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static Boolean parseEnvBool(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return Boolean.parseBoolean(value);
     }
 }
