@@ -71,12 +71,14 @@ Single Maven module with disciplined package boundaries under `com.mrsmith`:
 
 ### Configuration load (startup)
 
+Precedence: CLI flags > env vars > config file > defaults.
+
 1. Read config file `~/.config/mrsmith/config.json` (JSON, parsed with
-   Jackson — no extra parser dependency) for defaults (base URL, model,
-   optional system prompt).
+   Jackson — no extra parser dependency) for defaults: base URL, model,
+   optional `systemPrompt`, optional `apiKey`.
 2. Override with env vars: `OPENAI_API_KEY`, `MRSMITH_BASE_URL`,
    `MRSMITH_MODEL`.
-3. Override with picocli flags (e.g. `--model`).
+3. Override with picocli flags (e.g. `--model`, `--api-key`).
 4. Build `AppConfig`; fail fast with a clear message if `apiKey` is missing.
 
 ### Chat loop (one turn)

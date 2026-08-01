@@ -442,6 +442,21 @@ class ConfigLoaderTest {
     }
 
     @Test
+    void fileApiKeyIsUsedWhenEnvAndCliAbsent() throws IOException {
+        Path file = writeConfig("{ \"apiKey\": \"sk-file\" }");
+        AppConfig config = ConfigLoader.load(file, null, null, null, null, Map.of());
+        assertEquals("sk-file", config.apiKey());
+    }
+
+    @Test
+    void envOverridesFileApiKey() throws IOException {
+        Path file = writeConfig("{ \"apiKey\": \"sk-file\" }");
+        AppConfig config = ConfigLoader.load(file, null, null, null, null,
+                Map.of("OPENAI_API_KEY", "sk-env"));
+        assertEquals("sk-env", config.apiKey());
+    }
+
+    @Test
     void envOverridesFile() throws IOException {
         Path file = writeConfig("{ \"model\": \"from-file\", \"baseUrl\": \"https://file.example\", \"systemPrompt\": \"file prompt\" }");
         AppConfig config = ConfigLoader.load(file, null, null, null, null,
@@ -557,6 +572,7 @@ public final class ConfigLoader {
         String fileModel = null;
         String fileBaseUrl = null;
         String fileSystemPrompt = null;
+        String fileApiKey = null;
 
         if (Files.exists(configFile)) {
             try {
@@ -570,6 +586,9 @@ public final class ConfigLoader {
                 if (root.hasNonNull("systemPrompt")) {
                     fileSystemPrompt = root.get("systemPrompt").asText();
                 }
+                if (root.hasNonNull("apiKey")) {
+                    fileApiKey = root.get("apiKey").asText();
+                }
             } catch (IOException e) {
                 System.err.println("Warning: could not read config file " + configFile
                         + " (" + e.getMessage() + "). Falling back to env vars and defaults.");
@@ -580,7 +599,7 @@ public final class ConfigLoader {
         String baseUrl = firstNonNull(cliBaseUrl, env.get("MRSMITH_BASE_URL"), fileBaseUrl,
                 "https://api.openai.com/v1");
         String systemPrompt = firstNonNull(cliSystemPrompt, fileSystemPrompt);
-        String apiKey = firstNonNull(cliApiKey, env.get("OPENAI_API_KEY"));
+        String apiKey = firstNonNull(cliApiKey, env.get("OPENAI_API_KEY"), fileApiKey);
 
         if (apiKey == null) {
             throw new ConfigException(
