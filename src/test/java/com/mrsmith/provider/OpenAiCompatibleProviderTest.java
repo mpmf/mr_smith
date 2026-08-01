@@ -139,6 +139,29 @@ class OpenAiCompatibleProviderTest {
     }
 
     @Test
+    void preservesPartialThinkingWhenStreamIsInterrupted() throws Exception {
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY)
+                .setBody("""
+                        data: {"choices":[{"delta":{"reasoning_content":"half "}}]}
+
+                        data: {"choices":[{"delta":{"reasoning_content":"done"}}]}
+
+                        data: {"choices":[{"delta":{"content":"answer"}}]}
+
+                        data: [DONE]
+
+                        """));
+        List<String> reasoning = new ArrayList<>();
+        ProviderException e = assertThrows(ProviderException.class,
+                () -> provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { }, reasoning::add));
+        assertTrue(e.partialThinking() != null);
+        assertEquals(String.join("", reasoning), e.partialThinking());
+    }
+
+    @Test
     void retriesOnNetworkFailureThenSucceeds() throws Exception {
         server.enqueue(new MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START));
         server.enqueue(new MockResponse().setResponseCode(200)

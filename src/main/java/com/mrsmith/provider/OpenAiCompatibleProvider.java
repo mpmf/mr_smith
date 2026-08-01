@@ -111,7 +111,7 @@ public class OpenAiCompatibleProvider implements Provider {
         } catch (IOException e) {
             String text = partial.isEmpty() ? null : partial.toString();
             String thinking = partialThinking.isEmpty() ? null : partialThinking.toString();
-            throw new ProviderException(text == null
+            throw new ProviderException(text == null && thinking == null
                     ? "Network error during request: " + e.getMessage()
                     : "Stream interrupted: " + e.getMessage(), e, text, thinking);
         }
@@ -146,9 +146,10 @@ public class OpenAiCompatibleProvider implements Provider {
                     .put("content", config.systemPrompt());
         }
         for (ChatMessage message : history) {
+            String content = message.content() == null ? "" : message.content();
             messages.addObject()
                     .put("role", message.roleName())
-                    .put("content", message.content());
+                    .put("content", content);
         }
         try {
             return JSON.writeValueAsString(root);
