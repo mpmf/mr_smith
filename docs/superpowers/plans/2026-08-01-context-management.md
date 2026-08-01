@@ -392,7 +392,7 @@ class ConfigLoaderTest {
     @Test
     void cliOverridesEnv() throws IOException {
         Path file = writeConfig("{ \"model\": \"from-file\" }");
-        CliConfig cli = new CliConfig("from-cli", null, null, "sk-cli", null, null);
+        CliConfig cli = new CliConfig("sk-cli", null, "from-cli", null, null, null);
         AppConfig config = ConfigLoader.load(file, cli,
                 Map.of("OPENAI_API_KEY", "sk-env", "MRSMITH_MODEL", "from-env"));
         assertEquals("from-cli", config.model());
@@ -579,7 +579,13 @@ public final class ConfigLoader {
         if (value == null || value.isBlank()) {
             return null;
         }
-        return Boolean.parseBoolean(value);
+        if (value.equalsIgnoreCase("true")) {
+            return Boolean.TRUE;
+        }
+        if (value.equalsIgnoreCase("false")) {
+            return Boolean.FALSE;
+        }
+        return null;
     }
 }
 ```

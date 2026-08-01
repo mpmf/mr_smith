@@ -113,11 +113,11 @@ tokens: 1,234 in (est.) · 345 out (est.) · total 1,579 · session 12,345 (est.
 
 ```
 Session usage:
-  prompt:        12,000
-  completion:     3,456
-  total:         15,456
+  prompt:      12,000
+  completion:  3,456
+  total:       15,456
   context limit: 128,000 configured (12% used)   ← only if maxContextTokens set
-  history:           42 messages
+  history: 42 messages
 ```
 
 **Near-limit warnings** (advisory, once per threshold):
