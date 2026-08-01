@@ -13,9 +13,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ReplIoTest {
 
+    private static final String YELLOW = "\u001B[33m";
+    private static final String RESET = "\u001B[0m";
+
     @Test
     void readsLinesFromReader() throws IOException {
-        ReplIo io = new ReplIo(new BufferedReader(new StringReader("hello\n/exit\n")), new PrintStream(new ByteArrayOutputStream()));
+        ReplIo io = new ReplIo(new BufferedReader(new StringReader("hello\n/exit\n")), new PrintStream(new ByteArrayOutputStream()), false);
         assertEquals("hello", io.readLine());
         assertEquals("/exit", io.readLine());
     }
@@ -23,8 +26,7 @@ class ReplIoTest {
     @Test
     void writeAppendsWithoutNewline() {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        PrintStream out = new PrintStream(new BufferedOutputStream(buffer));
-        ReplIo io = new ReplIo(new BufferedReader(new StringReader("")), out);
+        ReplIo io = new ReplIo(new BufferedReader(new StringReader("")), new PrintStream(new BufferedOutputStream(buffer)), false);
         io.write("a");
         io.write("b");
         assertEquals("ab", buffer.toString());
@@ -33,8 +35,24 @@ class ReplIoTest {
     @Test
     void writeLineAppendsNewline() {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        ReplIo io = new ReplIo(new BufferedReader(new StringReader("")), new PrintStream(buffer));
+        ReplIo io = new ReplIo(new BufferedReader(new StringReader("")), new PrintStream(buffer), false);
         io.writeLine("hi");
         assertEquals("hi" + System.lineSeparator(), buffer.toString());
+    }
+
+    @Test
+    void writeReasoningWrapsInYellowWhenColorEnabled() {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        ReplIo io = new ReplIo(new BufferedReader(new StringReader("")), new PrintStream(buffer), true);
+        io.writeReasoning("think");
+        assertEquals(YELLOW + "think" + RESET, buffer.toString());
+    }
+
+    @Test
+    void writeReasoningIsPlainWhenColorDisabled() {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        ReplIo io = new ReplIo(new BufferedReader(new StringReader("")), new PrintStream(buffer), false);
+        io.writeReasoning("think");
+        assertEquals("think", buffer.toString());
     }
 }

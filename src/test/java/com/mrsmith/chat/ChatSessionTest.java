@@ -210,6 +210,11 @@ class ChatSessionTest {
         public void writeLine(String line) {
             lines.add(line);
         }
+
+        @Override
+        public void writeReasoning(String text) {
+            lines.add(text);
+        }
     }
 
     static class FakeProvider implements Provider {

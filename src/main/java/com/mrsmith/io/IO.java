@@ -9,4 +9,6 @@ public interface IO {
     void write(String text);
 
     void writeLine(String line);
+
+    void writeReasoning(String text);
 }
