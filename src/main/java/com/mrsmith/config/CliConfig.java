@@ -1,6 +1,6 @@
 package com.mrsmith.config;
 
-public record CliConfig(String model, String baseUrl, String systemPrompt, String apiKey,
+public record CliConfig(String apiKey, String baseUrl, String model, String systemPrompt,
                         Integer maxContextTokens, Boolean includeUsage) {
 
     public static CliConfig empty() {

@@ -111,6 +111,12 @@ public final class ConfigLoader {
         if (value == null || value.isBlank()) {
             return null;
         }
-        return Boolean.parseBoolean(value);
+        if (value.equalsIgnoreCase("true")) {
+            return Boolean.TRUE;
+        }
+        if (value.equalsIgnoreCase("false")) {
+            return Boolean.FALSE;
+        }
+        return null;
     }
 }

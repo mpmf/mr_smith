@@ -68,7 +68,7 @@ class ConfigLoaderTest {
     @Test
     void cliOverridesEnv() throws IOException {
         Path file = writeConfig("{ \"model\": \"from-file\" }");
-        CliConfig cli = new CliConfig("from-cli", null, null, "sk-cli", null, null);
+        CliConfig cli = new CliConfig("sk-cli", null, "from-cli", null, null, null);
         AppConfig config = ConfigLoader.load(file, cli,
                 Map.of("OPENAI_API_KEY", "sk-env", "MRSMITH_MODEL", "from-env"));
         assertEquals("from-cli", config.model());
@@ -120,6 +120,13 @@ class ConfigLoaderTest {
         AppConfig config = ConfigLoader.load(noFile(), CliConfig.empty(),
                 Map.of("OPENAI_API_KEY", "sk-x", "MRSMITH_MAX_CONTEXT", "abc"));
         assertNull(config.maxContextTokens());
+    }
+
+    @Test
+    void invalidEnvIncludeUsageIsIgnored() throws IOException {
+        AppConfig config = ConfigLoader.load(noFile(), CliConfig.empty(),
+                Map.of("OPENAI_API_KEY", "sk-x", "MRSMITH_INCLUDE_USAGE", "treu"));
+        assertTrue(config.includeUsage());
     }
 
     private Path noFile() {

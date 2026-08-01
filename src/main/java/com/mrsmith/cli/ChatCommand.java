@@ -42,7 +42,7 @@ public class ChatCommand implements Callable<Integer> {
         AppConfig config;
         try {
             config = ConfigLoader.load(
-                    new CliConfig(model, baseUrl, systemPrompt, apiKey, maxContext, includeUsage));
+                    new CliConfig(apiKey, baseUrl, model, systemPrompt, maxContext, includeUsage));
         } catch (ConfigException e) {
             System.err.println(e.getMessage());
             return 1;
