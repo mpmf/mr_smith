@@ -15,6 +15,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -50,9 +53,11 @@ class OpenAiCompatibleProviderTest {
 
                         """));
         List<String> deltas = new ArrayList<>();
-        ChatMessage reply = provider.send(List.of(new ChatMessage(Role.USER, "hello")), deltas::add);
-        assertEquals("Hi there", reply.content());
+        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hello")), deltas::add);
+        assertEquals("Hi there", response.message().content());
         assertEquals(List.of("Hi", " there"), deltas);
+        assertNotNull(response.usage());
+        assertTrue(response.usageEstimated());
     }
 
     @Test
@@ -65,6 +70,7 @@ class OpenAiCompatibleProviderTest {
         String body = request.getBody().readUtf8();
         assertTrue(body.contains("\"model\":\"test-model\""));
         assertTrue(body.contains("\"stream\":true"));
+        assertTrue(body.contains("\"stream_options\":{\"include_usage\":true}"));
         assertTrue(body.contains("\"role\":\"user\""));
         assertTrue(body.contains("\"content\":\"hello\""));
     }
@@ -96,8 +102,8 @@ class OpenAiCompatibleProviderTest {
                 .setHeader("Content-Type", "text/event-stream")
                 .setBody("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"));
         List<String> deltas = new ArrayList<>();
-        ChatMessage reply = provider.send(List.of(new ChatMessage(Role.USER, "hi")), deltas::add);
-        assertEquals("ok", reply.content());
+        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), deltas::add);
+        assertEquals("ok", response.message().content());
         assertEquals(2, server.getRequestCount());
     }
 
@@ -140,8 +146,50 @@ class OpenAiCompatibleProviderTest {
                 .setHeader("Content-Type", "text/event-stream")
                 .setBody("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"));
         List<String> deltas = new ArrayList<>();
-        ChatMessage reply = provider.send(List.of(new ChatMessage(Role.USER, "hi")), deltas::add);
-        assertEquals("ok", reply.content());
+        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), deltas::add);
+        assertEquals("ok", response.message().content());
         assertEquals(2, server.getRequestCount());
+    }
+
+    @Test
+    void usesRealUsageWhenProviderSendsIt() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("""
+                        data: {"choices":[{"delta":{"content":"ok"}}]}
+
+                        data: {"usage":{"prompt_tokens":1200,"completion_tokens":300}}
+
+                        data: [DONE]
+
+                        """));
+        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { });
+        assertEquals("ok", response.message().content());
+        assertEquals(new Usage(1200, 300), response.usage());
+        assertFalse(response.usageEstimated());
+    }
+
+    @Test
+    void estimatesUsageWhenProviderSendsNone() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"));
+        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { });
+        assertTrue(response.usageEstimated());
+        assertTrue(response.usage().promptTokens() >= 1);
+        assertEquals(1, response.usage().completionTokens());
+    }
+
+    @Test
+    void includeUsageDisabledOmitsStreamOptions() throws Exception {
+        server.shutdown();
+        server = new MockWebServer();
+        server.start();
+        AppConfig config = new AppConfig("sk-test", server.url("/").toString(), "test-model", null, null, false);
+        provider = new OpenAiCompatibleProvider(config, HttpClient.newHttpClient(), 0L);
+        server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));
+        provider.send(List.of(new ChatMessage(Role.USER, "hello")), s -> { });
+        RecordedRequest request = server.takeRequest();
+        assertFalse(request.getBody().readUtf8().contains("stream_options"));
     }
 }

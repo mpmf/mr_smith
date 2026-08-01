@@ -33,7 +33,7 @@ public class ChatSession {
             }
             history.add(new ChatMessage(Role.USER, line));
             try {
-                ChatMessage reply = provider.send(history, io::write);
+                ChatMessage reply = provider.send(history, io::write).message();
                 history.add(reply);
                 io.writeLine("");
             } catch (ProviderException e) {

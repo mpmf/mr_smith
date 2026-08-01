@@ -4,6 +4,7 @@ import com.mrsmith.io.IO;
 import com.mrsmith.provider.ChatMessage;
 import com.mrsmith.provider.Provider;
 import com.mrsmith.provider.ProviderException;
+import com.mrsmith.provider.ProviderResponse;
 import com.mrsmith.provider.Role;
 import org.junit.jupiter.api.Test;
 
@@ -137,13 +138,13 @@ class ChatSessionTest {
         int calls = 0;
 
         @Override
-        public ChatMessage send(List<ChatMessage> history, Consumer<String> tokenSink) {
+        public ProviderResponse send(List<ChatMessage> history, Consumer<String> tokenSink) {
             receivedHistories.add(new ArrayList<>(history));
             calls++;
             ChatMessage last = history.get(history.size() - 1);
             String reply = last.content() + " response";
             tokenSink.accept(reply);
-            return new ChatMessage(Role.ASSISTANT, reply);
+            return new ProviderResponse(new ChatMessage(Role.ASSISTANT, reply), null, false);
         }
     }
 
@@ -158,7 +159,7 @@ class ChatSessionTest {
         }
 
         @Override
-        public ChatMessage send(List<ChatMessage> history, Consumer<String> tokenSink) {
+        public ProviderResponse send(List<ChatMessage> history, Consumer<String> tokenSink) {
             if (calls++ == 0) {
                 return first.send(history, tokenSink);
             }

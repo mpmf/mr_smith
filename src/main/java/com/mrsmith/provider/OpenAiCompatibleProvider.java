@@ -40,7 +40,7 @@ public class OpenAiCompatibleProvider implements Provider {
     }
 
     @Override
-    public ChatMessage send(List<ChatMessage> history, Consumer<String> tokenSink) {
+    public ProviderResponse send(List<ChatMessage> history, Consumer<String> tokenSink) {
         try {
             return doSend(history, tokenSink);
         } catch (ProviderException e) {
@@ -52,11 +52,11 @@ public class OpenAiCompatibleProvider implements Provider {
         }
     }
 
-    private ChatMessage doSend(List<ChatMessage> history, Consumer<String> tokenSink)
+    private ProviderResponse doSend(List<ChatMessage> history, Consumer<String> tokenSink)
             throws IOException, InterruptedException {
         HttpRequest request = buildRequest(buildRequestBody(history));
         HttpResponse<InputStream> response = sendWithRetry(request);
-        return handleResponse(response, tokenSink);
+        return handleResponse(response, history, tokenSink);
     }
 
     private HttpResponse<InputStream> sendWithRetry(HttpRequest request)
@@ -76,7 +76,8 @@ public class OpenAiCompatibleProvider implements Provider {
         return response;
     }
 
-    private ChatMessage handleResponse(HttpResponse<InputStream> response, Consumer<String> tokenSink) {
+    private ProviderResponse handleResponse(HttpResponse<InputStream> response, List<ChatMessage> history,
+                                            Consumer<String> tokenSink) {
         if (response.statusCode() >= 500) {
             throw new ProviderException("Provider error HTTP " + response.statusCode()
                     + " after retry: " + errorBody(response));
@@ -91,8 +92,15 @@ public class OpenAiCompatibleProvider implements Provider {
             partial.append(delta);
         };
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.body()))) {
-            String full = SseParser.consume(reader, sink);
-            return new ChatMessage(Role.ASSISTANT, full);
+            SseResult result = SseParser.consume(reader, sink);
+            ChatMessage message = new ChatMessage(Role.ASSISTANT, result.content());
+            Usage usage = result.usage();
+            boolean estimated = false;
+            if (usage == null) {
+                usage = estimateUsage(history, result.content());
+                estimated = true;
+            }
+            return new ProviderResponse(message, usage, estimated);
         } catch (IOException e) {
             String text = partial.isEmpty() ? null : partial.toString();
             throw new ProviderException(text == null
@@ -101,10 +109,24 @@ public class OpenAiCompatibleProvider implements Provider {
         }
     }
 
+    private Usage estimateUsage(List<ChatMessage> history, String replyContent) {
+        int prompt = 0;
+        if (config.systemPrompt() != null) {
+            prompt += TokenEstimator.estimateTokens(config.systemPrompt());
+        }
+        for (ChatMessage message : history) {
+            prompt += TokenEstimator.estimateTokens(message.content());
+        }
+        return new Usage(prompt, TokenEstimator.estimateTokens(replyContent));
+    }
+
     private String buildRequestBody(List<ChatMessage> history) {
         ObjectNode root = JSON.createObjectNode();
         root.put("model", config.model());
         root.put("stream", true);
+        if (config.includeUsage()) {
+            root.putObject("stream_options").put("include_usage", true);
+        }
         ArrayNode messages = root.putArray("messages");
         if (config.systemPrompt() != null) {
             messages.addObject()
