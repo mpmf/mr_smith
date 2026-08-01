@@ -1280,7 +1280,7 @@ class ChatSessionTest {
         ChatSession session = new ChatSession(new FirstThenProvider(failing, ok), io, config());
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("HTTP 401")));
-        assertEquals(2, ok.calls);
+        assertEquals(1, ok.calls);
     }
 
     @Test
@@ -1404,12 +1404,12 @@ public class ChatSession {
             try {
                 ChatMessage reply = provider.send(history, io::write);
                 history.add(reply);
-                io.writeLine();
+                io.writeLine("");
             } catch (ProviderException e) {
                 if (e.hasPartialContent()) {
                     history.add(new ChatMessage(Role.ASSISTANT, e.partialContent()));
                 }
-                io.writeLine();
+                io.writeLine("");
                 io.writeLine("Error: " + e.getMessage());
             }
         }
