@@ -55,38 +55,49 @@ public class OpenAiCompatibleProvider implements Provider {
     private ChatMessage doSend(List<ChatMessage> history, Consumer<String> tokenSink)
             throws IOException, InterruptedException {
         HttpRequest request = buildRequest(buildRequestBody(history));
-        HttpResponse<InputStream> response =
-                httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
-        return handleResponse(response, request, tokenSink);
+        HttpResponse<InputStream> response = sendWithRetry(request);
+        return handleResponse(response, tokenSink);
     }
 
-    private ChatMessage handleResponse(HttpResponse<InputStream> response, HttpRequest request,
-                                       Consumer<String> tokenSink) throws IOException, InterruptedException {
-        String partial = null;
+    private HttpResponse<InputStream> sendWithRetry(HttpRequest request)
+            throws IOException, InterruptedException {
+        HttpResponse<InputStream> response;
         try {
-            if (response.statusCode() >= 500) {
-                response.body().close();
-                Thread.sleep(retryDelayMillis);
-                response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
-                if (response.statusCode() >= 500) {
-                    throw new ProviderException("Provider error HTTP " + response.statusCode()
-                            + " after retry: " + readErrorBody(response));
-                }
-            }
-            if (response.statusCode() >= 400) {
-                throw new ProviderException("Provider error HTTP " + response.statusCode()
-                        + ": " + readErrorBody(response));
-            }
-            BufferedReader reader = new BufferedReader(new InputStreamReader(response.body()));
-            partial = SseParser.consume(reader, tokenSink);
-            return new ChatMessage(Role.ASSISTANT, partial);
-        } catch (ProviderException e) {
-            throw e;
+            response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
         } catch (IOException e) {
-            String message = partial == null
+            Thread.sleep(retryDelayMillis);
+            return httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        }
+        if (response.statusCode() >= 500) {
+            response.body().close();
+            Thread.sleep(retryDelayMillis);
+            return httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        }
+        return response;
+    }
+
+    private ChatMessage handleResponse(HttpResponse<InputStream> response, Consumer<String> tokenSink) {
+        if (response.statusCode() >= 500) {
+            throw new ProviderException("Provider error HTTP " + response.statusCode()
+                    + " after retry: " + errorBody(response));
+        }
+        if (response.statusCode() >= 400) {
+            throw new ProviderException("Provider error HTTP " + response.statusCode()
+                    + ": " + errorBody(response));
+        }
+        StringBuilder partial = new StringBuilder();
+        Consumer<String> sink = delta -> {
+            tokenSink.accept(delta);
+            partial.append(delta);
+        };
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.body()))) {
+            String full = SseParser.consume(reader, sink);
+            return new ChatMessage(Role.ASSISTANT, full);
+        } catch (IOException e) {
+            String text = partial.isEmpty() ? null : partial.toString();
+            throw new ProviderException(text == null
                     ? "Network error during request: " + e.getMessage()
-                    : "Stream interrupted: " + e.getMessage();
-            throw new ProviderException(message, e, partial);
+                    : "Stream interrupted: " + e.getMessage(), e, text);
         }
     }
 
@@ -121,9 +132,11 @@ public class OpenAiCompatibleProvider implements Provider {
                 .build();
     }
 
-    private static String readErrorBody(HttpResponse<InputStream> response) throws IOException {
+    private static String errorBody(HttpResponse<InputStream> response) {
         try (InputStream body = response.body()) {
             return new String(body.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return "(unable to read error body: " + e.getMessage() + ")";
         }
     }
 }

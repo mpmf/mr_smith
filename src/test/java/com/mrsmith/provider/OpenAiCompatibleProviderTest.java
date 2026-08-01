@@ -4,6 +4,7 @@ import com.mrsmith.config.AppConfig;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
+import okhttp3.mockwebserver.SocketPolicy;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -60,6 +61,7 @@ class OpenAiCompatibleProviderTest {
         provider.send(List.of(new ChatMessage(Role.USER, "hello")), s -> { });
         RecordedRequest request = server.takeRequest();
         assertEquals("Bearer sk-test", request.getHeader("Authorization"));
+        assertEquals("/chat/completions", request.getPath());
         String body = request.getBody().readUtf8();
         assertTrue(body.contains("\"model\":\"test-model\""));
         assertTrue(body.contains("\"stream\":true"));
@@ -106,6 +108,40 @@ class OpenAiCompatibleProviderTest {
         ProviderException e = assertThrows(ProviderException.class,
                 () -> provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { }));
         assertTrue(e.getMessage().contains("502"));
+        assertEquals(2, server.getRequestCount());
+    }
+
+    @Test
+    void preservesPartialContentWhenStreamIsInterrupted() throws Exception {
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY)
+                .setBody("""
+                        data: {"choices":[{"delta":{"content":"par"}}]}
+
+                        data: {"choices":[{"delta":{"content":"tial"}}]}
+
+                        data: [DONE]
+
+                        """));
+        List<String> deltas = new ArrayList<>();
+        ProviderException e = assertThrows(ProviderException.class,
+                () -> provider.send(List.of(new ChatMessage(Role.USER, "hi")), deltas::add));
+        assertTrue(e.hasPartialContent());
+        assertEquals(String.join("", deltas), e.partialContent());
+        assertTrue(e.getMessage().contains("interrupted"));
+    }
+
+    @Test
+    void retriesOnNetworkFailureThenSucceeds() throws Exception {
+        server.enqueue(new MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START));
+        server.enqueue(new MockResponse().setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"));
+        List<String> deltas = new ArrayList<>();
+        ChatMessage reply = provider.send(List.of(new ChatMessage(Role.USER, "hi")), deltas::add);
+        assertEquals("ok", reply.content());
         assertEquals(2, server.getRequestCount());
     }
 }
