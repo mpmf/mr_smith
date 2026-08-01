@@ -47,7 +47,7 @@ New types under `com.mrsmith`:
 | Type | Package | Responsibility |
 |---|---|---|
 | `Usage` (record) | `provider` | `promptTokens`, `completionTokens` (both `Integer`, nullable); `total()` sums available fields |
-| `ProviderResponse` (record) | `provider` | `message` (`ChatMessage`) + `usage` (nullable `Usage`) |
+| `ProviderResponse` (record) | `provider` | `message` (`ChatMessage`) + `usage` (`Usage`) + `usageEstimated` (boolean) |
 | `SseResult` (record) | `provider` | `content` (String) + `usage` (nullable `Usage`) |
 | `TokenEstimator` | `provider` | static `estimateTokens(String)` heuristic (chars/4) |
 | `UsageTracker` | `chat` | Accumulates per-turn usage + session totals; produces the per-turn line and `/usage` text |
@@ -59,16 +59,22 @@ Changed types:
 - `SseParser.consume(...)` returns `SseResult` (was `String`); it parses `usage`
   out of chunks that carry it.
 - `OpenAiCompatibleProvider` sends `stream_options.include_usage` when
-  `config.includeUsage()` is true, and returns the parsed usage (null if the
-  provider didn't send any).
+  `config.includeUsage()` is true. It resolves the turn's usage itself: real
+  usage from the stream if present, otherwise a heuristic estimate computed
+  from the exact messages it serialized (system prompt + history) and the
+  reply content. `usageEstimated` flags which case applied. `usage` is never
+  null in the response.
 - `AppConfig` gains `Integer maxContextTokens` and `boolean includeUsage`
   (default `true`).
 - `ConfigLoader` reads `maxContextTokens` and `includeUsage` from the config
   file, env vars (`MRSMITH_MAX_CONTEXT`, `MRSMITH_INCLUDE_USAGE`), and CLI
-  flags, with the usual precedence (CLI > env > file > defaults).
+  flags, with the usual precedence (CLI > env > file > defaults). CLI values
+  are passed as a `CliConfig` record (replaces the growing positional-args
+  overload).
 - `ChatCommand` gains `--max-context` (Integer) and `--include-usage` (boolean).
-- `ChatSession` records each turn in `UsageTracker`, prints the per-turn line,
-  handles `/usage`, warns near the limit, and resets the tracker on `/reset`.
+- `ChatSession(Provider, IO, AppConfig)` records each turn in `UsageTracker`,
+  prints the per-turn line, handles `/usage`, warns near the limit (reading
+  `maxContextTokens` from config), and resets the tracker on `/reset`.
 
 ## Data Flow (one turn)
 
@@ -77,14 +83,13 @@ user input → history.add(USER)
 ProviderResponse response = provider.send(history, sink)
     → request body includes stream_options.include_usage (if enabled)
     → SSE parsed into SseResult(content, usage)
-    → ProviderResponse(message = ChatMessage(ASSISTANT, content), usage)
-if response.usage() == null:
-    prompt estimate  = Σ TokenEstimator.estimateTokens(msg.content)
-                       over system prompt + history
-    completion estimate = TokenEstimator.estimateTokens(reply.content)
-    resolvedUsage = Usage(prompt estimate, completion estimate)   [flagged est.]
-else resolvedUsage = response.usage()
-tracker.recordTurn(resolvedUsage)
+    → if usage == null:
+          prompt estimate  = Σ TokenEstimator.estimateTokens(msg.content)
+                             over system prompt + history
+          completion estimate = TokenEstimator.estimateTokens(reply content)
+          usage = Usage(prompt estimate, completion estimate); usageEstimated = true
+    → ProviderResponse(message = ChatMessage(ASSISTANT, content), usage, usageEstimated)
+tracker.recordTurn(response.usage(), response.usageEstimated())
 history.add(reply)
 io.writeLine(tracker.lastTurnLine())
 if maxContextTokens set and sessionTotal ≥ 85% → warn (once at 85%, once at 100%)
