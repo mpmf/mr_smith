@@ -1277,7 +1277,7 @@ class ChatSessionTest {
         };
         FakeProvider ok = new FakeProvider();
         StubIo io = new StubIo(List.of("hello", "again", "/exit"));
-        ChatSession session = new ChatSession(new FirstThenProvider(failing, ok), io, config());
+        ChatSession session = new ChatSession(new FirstThenProvider(failing, ok), io);
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("HTTP 401")));
         assertEquals(1, ok.calls);
@@ -1291,7 +1291,7 @@ class ChatSessionTest {
         };
         FakeProvider ok = new FakeProvider();
         StubIo io = new StubIo(List.of("hello", "again", "/exit"));
-        ChatSession session = new ChatSession(new FirstThenProvider(interrupted, ok), io, config());
+        ChatSession session = new ChatSession(new FirstThenProvider(interrupted, ok), io);
         session.run();
         List<ChatMessage> secondTurn = ok.receivedHistories.get(0);
         assertEquals(3, secondTurn.size());
@@ -1577,7 +1577,7 @@ Expected: PASS, `BUILD SUCCESS`.
 - [ ] **Step 6: Run the full test suite**
 
 Run: `mvn -q test`
-Expected: `BUILD SUCCESS` with all 6 test classes passing.
+Expected: `BUILD SUCCESS` with all 8 test classes passing.
 
 - [ ] **Step 7: Package the runnable jar**
 

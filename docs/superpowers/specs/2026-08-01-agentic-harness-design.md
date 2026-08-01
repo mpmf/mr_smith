@@ -52,7 +52,8 @@ Single Maven module with disciplined package boundaries under `com.mrsmith`:
 ### Key types
 
 - `Provider` — sends a chat conversation, streams response tokens through a
-  `Sink<String>`, returns the assembled assistant message. Blocking.
+  token sink (implemented as `java.util.function.Consumer<String>`), returns
+  the assembled assistant message. Blocking.
 - `IO` — `readLine()`, `write(String)`, `writeLine(String)`.
 - `ChatSession` — owns `List<ChatMessage>` history; loops
   `readLine → provider.send → stream tokens to output → append assistant
