@@ -2,7 +2,8 @@ package com.mrsmith.config;
 
 import java.util.Objects;
 
-public record AppConfig(String apiKey, String baseUrl, String model, String systemPrompt) {
+public record AppConfig(String apiKey, String baseUrl, String model, String systemPrompt,
+                        Integer maxContextTokens, boolean includeUsage) {
 
     public AppConfig {
         Objects.requireNonNull(apiKey, "apiKey is required");
@@ -11,5 +12,9 @@ public record AppConfig(String apiKey, String baseUrl, String model, String syst
         if (baseUrl.endsWith("/")) {
             baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
         }
+    }
+
+    public AppConfig(String apiKey, String baseUrl, String model, String systemPrompt) {
+        this(apiKey, baseUrl, model, systemPrompt, null, true);
     }
 }
