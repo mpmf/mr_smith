@@ -3,6 +3,7 @@ package com.mrsmith.io;
 import org.junit.jupiter.api.Test;
 
 import java.io.BufferedReader;
+import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -22,7 +23,8 @@ class ReplIoTest {
     @Test
     void writeAppendsWithoutNewline() {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        ReplIo io = new ReplIo(new BufferedReader(new StringReader("")), new PrintStream(buffer));
+        PrintStream out = new PrintStream(new BufferedOutputStream(buffer));
+        ReplIo io = new ReplIo(new BufferedReader(new StringReader("")), out);
         io.write("a");
         io.write("b");
         assertEquals("ab", buffer.toString());
@@ -33,6 +35,6 @@ class ReplIoTest {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         ReplIo io = new ReplIo(new BufferedReader(new StringReader("")), new PrintStream(buffer));
         io.writeLine("hi");
-        assertEquals("hi\n", buffer.toString());
+        assertEquals("hi" + System.lineSeparator(), buffer.toString());
     }
 }
