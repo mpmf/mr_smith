@@ -597,6 +597,8 @@ public final class SseParser {
                                     Consumer<String> reasoningSink) throws IOException {
         StringBuilder content = new StringBuilder();
         StringBuilder thinking = new StringBuilder();
+        boolean reasoningStreamed = false;
+        boolean transitionNewlineSent = false;
         Usage usage = null;
         String line;
         while ((line = reader.readLine()) != null) {
@@ -624,9 +626,14 @@ public final class SseParser {
                 if (reasoning != null && !reasoning.isEmpty()) {
                     reasoningSink.accept(reasoning);
                     thinking.append(reasoning);
+                    reasoningStreamed = true;
                 }
                 String contentDelta = delta.path("content").asText(null);
                 if (contentDelta != null && !contentDelta.isEmpty()) {
+                    if (reasoningStreamed && !transitionNewlineSent) {
+                        transitionNewlineSent = true;
+                        contentSink.accept("\n");
+                    }
                     contentSink.accept(contentDelta);
                     content.append(contentDelta);
                 }

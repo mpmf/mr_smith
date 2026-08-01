@@ -78,6 +78,9 @@ per-turn usage line + warnings     // unchanged
 
 - Each reasoning chunk renders as `\u001B[33m` + text + `\u001B[0m` (yellow),
   streamed live. The per-chunk reset prevents color leaking into the answer.
+- When the first answer delta arrives after reasoning, a single newline is
+  emitted through the content sink so the visible answer starts on a new line
+  below the thinking (the newline is not stored in `content`).
 - The answer streams plain.
 - Non-TTY: no ANSI; thinking still printed as plain text.
 
