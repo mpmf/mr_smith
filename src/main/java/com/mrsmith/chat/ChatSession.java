@@ -42,6 +42,9 @@ public class ChatSession {
                 }
                 io.writeLine("");
                 io.writeLine("Error: " + e.getMessage());
+            } catch (RuntimeException e) {
+                io.writeLine("");
+                io.writeLine("Error: " + e.getMessage());
             }
         }
     }

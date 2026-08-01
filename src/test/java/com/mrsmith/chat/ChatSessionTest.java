@@ -95,6 +95,19 @@ class ChatSessionTest {
         assertEquals("partial", secondTurn.get(1).content());
     }
 
+    @Test
+    void genericProviderFailureIsShownAndLoopContinues() throws Exception {
+        Provider failing = (history, sink) -> {
+            throw new IllegalStateException("boom");
+        };
+        FakeProvider ok = new FakeProvider();
+        StubIo io = new StubIo(List.of("hello", "again", "/exit"));
+        ChatSession session = new ChatSession(new FirstThenProvider(failing, ok), io);
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("boom")));
+        assertEquals(1, ok.calls);
+    }
+
     static class StubIo implements IO {
         final Deque<String> inputs;
         final List<String> lines = new ArrayList<>();
