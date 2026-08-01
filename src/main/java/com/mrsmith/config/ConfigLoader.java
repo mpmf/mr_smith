@@ -27,6 +27,7 @@ public final class ConfigLoader {
         String fileModel = null;
         String fileBaseUrl = null;
         String fileSystemPrompt = null;
+        String fileApiKey = null;
 
         if (Files.exists(configFile)) {
             try {
@@ -40,6 +41,9 @@ public final class ConfigLoader {
                 if (root.hasNonNull("systemPrompt")) {
                     fileSystemPrompt = root.get("systemPrompt").asText();
                 }
+                if (root.hasNonNull("apiKey")) {
+                    fileApiKey = root.get("apiKey").asText();
+                }
             } catch (IOException e) {
                 System.err.println("Warning: could not read config file " + configFile
                         + " (" + e.getMessage() + "). Falling back to env vars and defaults.");
@@ -50,7 +54,7 @@ public final class ConfigLoader {
         String baseUrl = firstNonNull(cliBaseUrl, env.get("MRSMITH_BASE_URL"), fileBaseUrl,
                 "https://api.openai.com/v1");
         String systemPrompt = firstNonNull(cliSystemPrompt, fileSystemPrompt);
-        String apiKey = firstNonNull(cliApiKey, env.get("OPENAI_API_KEY"));
+        String apiKey = firstNonNull(cliApiKey, env.get("OPENAI_API_KEY"), fileApiKey);
 
         if (apiKey == null) {
             throw new ConfigException(

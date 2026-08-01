@@ -40,6 +40,21 @@ class ConfigLoaderTest {
     }
 
     @Test
+    void fileApiKeyIsUsedWhenEnvAndCliAbsent() throws IOException {
+        Path file = writeConfig("{ \"apiKey\": \"sk-file\" }");
+        AppConfig config = ConfigLoader.load(file, null, null, null, null, Map.of());
+        assertEquals("sk-file", config.apiKey());
+    }
+
+    @Test
+    void envOverridesFileApiKey() throws IOException {
+        Path file = writeConfig("{ \"apiKey\": \"sk-file\" }");
+        AppConfig config = ConfigLoader.load(file, null, null, null, null,
+                Map.of("OPENAI_API_KEY", "sk-env"));
+        assertEquals("sk-env", config.apiKey());
+    }
+
+    @Test
     void envOverridesFile() throws IOException {
         Path file = writeConfig("{ \"model\": \"from-file\", \"baseUrl\": \"https://file.example\", \"systemPrompt\": \"file prompt\" }");
         AppConfig config = ConfigLoader.load(file, null, null, null, null,
