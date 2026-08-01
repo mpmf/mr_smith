@@ -20,6 +20,8 @@ public class ChatSession {
     private final AppConfig config;
     private final List<ChatMessage> history = new ArrayList<>();
     private final UsageTracker tracker = new UsageTracker();
+    private static final int WARN_THRESHOLD_PERCENT = 85;
+    private static final int LIMIT_PERCENT = 100;
     private boolean warned85;
     private boolean warned100;
 
@@ -45,7 +47,10 @@ public class ChatSession {
                 history.add(response.message());
                 io.writeLine("");
                 tracker.recordTurn(response.usage(), response.usageEstimated());
-                io.writeLine(tracker.lastTurnLine());
+                String usageLine = tracker.lastTurnLine();
+                if (!usageLine.isEmpty()) {
+                    io.writeLine(usageLine);
+                }
                 warnIfNearLimit();
             } catch (ProviderException e) {
                 if (e.hasPartialContent()) {
@@ -61,26 +66,34 @@ public class ChatSession {
     }
 
     private void warnIfNearLimit() {
-        Integer maxContext = config.maxContextTokens();
-        if (maxContext == null || maxContext <= 0) {
+        if (!contextLimitConfigured()) {
             return;
         }
-        int pct = (int) Math.round(tracker.totalTokens() * 100.0 / maxContext);
-        if (pct >= 100) {
+        int pct = pctOfMax();
+        if (pct >= LIMIT_PERCENT) {
             if (!warned100) {
                 warned100 = true;
                 io.writeLine(String.format(Locale.US,
                         "Warning: session reached 100%% of your configured %,d-token context limit — consider /reset",
-                        maxContext));
+                        config.maxContextTokens()));
             }
-        } else if (pct >= 85) {
+        } else if (pct >= WARN_THRESHOLD_PERCENT) {
             if (!warned85) {
                 warned85 = true;
                 io.writeLine(String.format(Locale.US,
                         "Warning: session at %d%% of your configured %,d-token context limit — consider /reset",
-                        pct, maxContext));
+                        pct, config.maxContextTokens()));
             }
         }
+    }
+
+    private boolean contextLimitConfigured() {
+        Integer maxContext = config.maxContextTokens();
+        return maxContext != null && maxContext > 0;
+    }
+
+    private int pctOfMax() {
+        return (int) Math.round(tracker.totalTokens() * 100.0 / config.maxContextTokens());
     }
 
     private boolean handleCommand(String line) {
@@ -104,11 +117,9 @@ public class ChatSession {
 
     private String usageReport() {
         StringBuilder report = new StringBuilder(tracker.usageReport());
-        Integer maxContext = config.maxContextTokens();
-        if (maxContext != null && maxContext > 0) {
-            int pct = (int) Math.round(tracker.totalTokens() * 100.0 / maxContext);
+        if (contextLimitConfigured()) {
             report.append(String.format(Locale.US, "%n  context limit: %,d configured (%d%% used)",
-                    maxContext, pct));
+                    config.maxContextTokens(), pctOfMax()));
         }
         report.append(String.format(Locale.US, "%n  history: %d messages", history.size()));
         return report.toString();
