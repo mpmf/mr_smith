@@ -884,6 +884,7 @@ import com.mrsmith.config.AppConfig;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
+import okhttp3.mockwebserver.SocketPolicy;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -940,6 +941,7 @@ class OpenAiCompatibleProviderTest {
         provider.send(List.of(new ChatMessage(Role.USER, "hello")), s -> { });
         RecordedRequest request = server.takeRequest();
         assertEquals("Bearer sk-test", request.getHeader("Authorization"));
+        assertEquals("/chat/completions", request.getPath());
         String body = request.getBody().readUtf8();
         assertTrue(body.contains("\"model\":\"test-model\""));
         assertTrue(body.contains("\"stream\":true"));
@@ -986,6 +988,40 @@ class OpenAiCompatibleProviderTest {
         ProviderException e = assertThrows(ProviderException.class,
                 () -> provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { }));
         assertTrue(e.getMessage().contains("502"));
+        assertEquals(2, server.getRequestCount());
+    }
+
+    @Test
+    void preservesPartialContentWhenStreamIsInterrupted() throws Exception {
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY)
+                .setBody("""
+                        data: {"choices":[{"delta":{"content":"par"}}]}
+
+                        data: {"choices":[{"delta":{"content":"tial"}}]}
+
+                        data: [DONE]
+
+                        """));
+        List<String> deltas = new ArrayList<>();
+        ProviderException e = assertThrows(ProviderException.class,
+                () -> provider.send(List.of(new ChatMessage(Role.USER, "hi")), deltas::add));
+        assertTrue(e.hasPartialContent());
+        assertEquals(String.join("", deltas), e.partialContent());
+        assertTrue(e.getMessage().contains("interrupted"));
+    }
+
+    @Test
+    void retriesOnNetworkFailureThenSucceeds() throws Exception {
+        server.enqueue(new MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START));
+        server.enqueue(new MockResponse().setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"));
+        List<String> deltas = new ArrayList<>();
+        ChatMessage reply = provider.send(List.of(new ChatMessage(Role.USER, "hi")), deltas::add);
+        assertEquals("ok", reply.content());
         assertEquals(2, server.getRequestCount());
     }
 }
@@ -1056,38 +1092,49 @@ public class OpenAiCompatibleProvider implements Provider {
     private ChatMessage doSend(List<ChatMessage> history, Consumer<String> tokenSink)
             throws IOException, InterruptedException {
         HttpRequest request = buildRequest(buildRequestBody(history));
-        HttpResponse<InputStream> response =
-                httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
-        return handleResponse(response, request, tokenSink);
+        HttpResponse<InputStream> response = sendWithRetry(request);
+        return handleResponse(response, tokenSink);
     }
 
-    private ChatMessage handleResponse(HttpResponse<InputStream> response, HttpRequest request,
-                                       Consumer<String> tokenSink) throws IOException, InterruptedException {
-        String partial = null;
+    private HttpResponse<InputStream> sendWithRetry(HttpRequest request)
+            throws IOException, InterruptedException {
+        HttpResponse<InputStream> response;
         try {
-            if (response.statusCode() >= 500) {
-                response.body().close();
-                Thread.sleep(retryDelayMillis);
-                response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
-                if (response.statusCode() >= 500) {
-                    throw new ProviderException("Provider error HTTP " + response.statusCode()
-                            + " after retry: " + readErrorBody(response));
-                }
-            }
-            if (response.statusCode() >= 400) {
-                throw new ProviderException("Provider error HTTP " + response.statusCode()
-                        + ": " + readErrorBody(response));
-            }
-            BufferedReader reader = new BufferedReader(new InputStreamReader(response.body()));
-            partial = SseParser.consume(reader, tokenSink);
-            return new ChatMessage(Role.ASSISTANT, partial);
-        } catch (ProviderException e) {
-            throw e;
+            response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
         } catch (IOException e) {
-            String message = partial == null
+            Thread.sleep(retryDelayMillis);
+            return httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        }
+        if (response.statusCode() >= 500) {
+            response.body().close();
+            Thread.sleep(retryDelayMillis);
+            return httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        }
+        return response;
+    }
+
+    private ChatMessage handleResponse(HttpResponse<InputStream> response, Consumer<String> tokenSink) {
+        if (response.statusCode() >= 500) {
+            throw new ProviderException("Provider error HTTP " + response.statusCode()
+                    + " after retry: " + errorBody(response));
+        }
+        if (response.statusCode() >= 400) {
+            throw new ProviderException("Provider error HTTP " + response.statusCode()
+                    + ": " + errorBody(response));
+        }
+        StringBuilder partial = new StringBuilder();
+        Consumer<String> sink = delta -> {
+            tokenSink.accept(delta);
+            partial.append(delta);
+        };
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.body()))) {
+            String full = SseParser.consume(reader, sink);
+            return new ChatMessage(Role.ASSISTANT, full);
+        } catch (IOException e) {
+            String text = partial.isEmpty() ? null : partial.toString();
+            throw new ProviderException(text == null
                     ? "Network error during request: " + e.getMessage()
-                    : "Stream interrupted: " + e.getMessage();
-            throw new ProviderException(message, e, partial);
+                    : "Stream interrupted: " + e.getMessage(), e, text);
         }
     }
 
@@ -1122,9 +1169,11 @@ public class OpenAiCompatibleProvider implements Provider {
                 .build();
     }
 
-    private static String readErrorBody(HttpResponse<InputStream> response) throws IOException {
+    private static String errorBody(HttpResponse<InputStream> response) {
         try (InputStream body = response.body()) {
             return new String(body.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return "(unable to read error body: " + e.getMessage() + ")";
         }
     }
 }
@@ -1155,7 +1204,6 @@ git commit -m "feat: add OpenAI-compatible provider with streaming and retry"
 ```java
 package com.mrsmith.chat;
 
-import com.mrsmith.config.AppConfig;
 import com.mrsmith.io.IO;
 import com.mrsmith.provider.ChatMessage;
 import com.mrsmith.provider.Provider;
@@ -1179,7 +1227,7 @@ class ChatSessionTest {
     void sendsUserMessageAndStoresReplyInHistory() throws Exception {
         FakeProvider provider = new FakeProvider();
         StubIo io = new StubIo(List.of("hello", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config());
+        ChatSession session = new ChatSession(provider, io);
         session.run();
         assertEquals(1, provider.receivedHistories.get(0).size());
         assertEquals(Role.USER, provider.receivedHistories.get(0).get(0).role());
@@ -1191,7 +1239,7 @@ class ChatSessionTest {
     void keepsContextAcrossTurns() throws Exception {
         FakeProvider provider = new FakeProvider();
         StubIo io = new StubIo(List.of("first", "second", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config());
+        ChatSession session = new ChatSession(provider, io);
         session.run();
         assertEquals(2, provider.receivedHistories.size());
         List<ChatMessage> secondTurn = provider.receivedHistories.get(1);
@@ -1205,7 +1253,7 @@ class ChatSessionTest {
     void resetClearsHistory() throws Exception {
         FakeProvider provider = new FakeProvider();
         StubIo io = new StubIo(List.of("first", "/reset", "second", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config());
+        ChatSession session = new ChatSession(provider, io);
         session.run();
         List<ChatMessage> secondTurn = provider.receivedHistories.get(1);
         assertEquals(1, secondTurn.size());
@@ -1216,7 +1264,7 @@ class ChatSessionTest {
     void unknownCommandIsNotSentToProvider() throws Exception {
         FakeProvider provider = new FakeProvider();
         StubIo io = new StubIo(List.of("/bogus", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config());
+        ChatSession session = new ChatSession(provider, io);
         session.run();
         assertTrue(provider.receivedHistories.isEmpty());
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("Unknown command")));
@@ -1249,10 +1297,6 @@ class ChatSessionTest {
         assertEquals(3, secondTurn.size());
         assertEquals(Role.ASSISTANT, secondTurn.get(1).role());
         assertEquals("partial", secondTurn.get(1).content());
-    }
-
-    private AppConfig config() {
-        return new AppConfig("sk-test", "https://example.com/v1", "test-model", null);
     }
 
     static class StubIo implements IO {
