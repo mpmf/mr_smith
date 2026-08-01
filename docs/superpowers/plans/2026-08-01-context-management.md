@@ -1264,7 +1264,7 @@ class UsageTrackerTest {
     void usageReportListsTotals() {
         UsageTracker tracker = new UsageTracker();
         tracker.recordTurn(new Usage(12000, 3456), false);
-        assertEquals("Session usage:\n  prompt:      12,000\n  completion:   3,456\n  total:      15,456",
+        assertEquals("Session usage:\n  prompt:      12,000\n  completion:  3,456\n  total:       15,456",
                 tracker.usageReport());
     }
 
@@ -1272,7 +1272,7 @@ class UsageTrackerTest {
     void usageReportFlagsEstimatedSession() {
         UsageTracker tracker = new UsageTracker();
         tracker.recordTurn(new Usage(100, 50), true);
-        assertEquals("Session usage:\n  prompt:      100\n  completion:     50\n  total:        150 (est.)",
+        assertEquals("Session usage:\n  prompt:      100\n  completion:  50\n  total:       150 (est.)",
                 tracker.usageReport());
     }
 
