@@ -14,8 +14,9 @@ public final class SseParser {
     private SseParser() {
     }
 
-    public static String consume(BufferedReader reader, Consumer<String> deltaSink) throws IOException {
+    public static SseResult consume(BufferedReader reader, Consumer<String> deltaSink) throws IOException {
         StringBuilder full = new StringBuilder();
+        Usage usage = null;
         String line;
         while ((line = reader.readLine()) != null) {
             if (!line.startsWith("data:")) {
@@ -28,23 +29,45 @@ public final class SseParser {
             if (payload.isEmpty()) {
                 continue;
             }
-            String delta = extractDelta(payload);
-            if (delta != null && !delta.isEmpty()) {
-                deltaSink.accept(delta);
-                full.append(delta);
+            JsonNode node = parse(payload);
+            if (node == null) {
+                continue;
+            }
+            Usage chunkUsage = extractUsage(node);
+            if (chunkUsage != null) {
+                usage = chunkUsage;
+            }
+            JsonNode delta = node.path("choices").path(0).path("delta");
+            if (!delta.isMissingNode()) {
+                String content = delta.path("content").asText(null);
+                if (content != null && !content.isEmpty()) {
+                    deltaSink.accept(content);
+                    full.append(content);
+                }
             }
         }
-        return full.toString();
+        return new SseResult(full.toString(), usage);
     }
 
-    private static String extractDelta(String payload) {
+    private static JsonNode parse(String payload) {
         try {
-            JsonNode node = JSON.readTree(payload);
-            JsonNode delta = node.path("choices").path(0).path("delta");
-            return delta.isMissingNode() ? null : delta.path("content").asText(null);
+            return JSON.readTree(payload);
         } catch (IOException e) {
             System.err.println("Warning: malformed SSE chunk, skipping: " + payload);
             return null;
         }
+    }
+
+    private static Usage extractUsage(JsonNode node) {
+        JsonNode usageNode = node.path("usage");
+        if (usageNode.isMissingNode() || usageNode.isNull()) {
+            return null;
+        }
+        Integer prompt = usageNode.hasNonNull("prompt_tokens") ? usageNode.get("prompt_tokens").asInt() : null;
+        Integer completion = usageNode.hasNonNull("completion_tokens") ? usageNode.get("completion_tokens").asInt() : null;
+        if (prompt == null && completion == null) {
+            return null;
+        }
+        return new Usage(prompt, completion);
     }
 }

@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class SseParserTest {
 
@@ -22,9 +23,10 @@ class SseParserTest {
                 data: [DONE]
 
                 """;
-        String full = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add);
-        assertEquals("Hello world", full);
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add);
+        assertEquals("Hello world", result.content());
         assertEquals(List.of("Hello", " world"), deltas);
+        assertNull(result.usage());
     }
 
     @Test
@@ -38,8 +40,8 @@ class SseParserTest {
                 data: [DONE]
 
                 """;
-        String full = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add);
-        assertEquals("hi", full);
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add);
+        assertEquals("hi", result.content());
         assertEquals(List.of("hi"), deltas);
     }
 
@@ -49,8 +51,8 @@ class SseParserTest {
         String sse = """
                 data: {"choices":[{"delta":{"content":"partial"}}]}
                 """;
-        String full = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add);
-        assertEquals("partial", full);
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add);
+        assertEquals("partial", result.content());
     }
 
     @Test
@@ -64,8 +66,52 @@ class SseParserTest {
                 data: [DONE]
 
                 """;
-        String full = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add);
-        assertEquals("ok", full);
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add);
+        assertEquals("ok", result.content());
         assertEquals(List.of("ok"), deltas);
+    }
+
+    @Test
+    void extractsUsageFromChunk() throws Exception {
+        List<String> deltas = new ArrayList<>();
+        String sse = """
+                data: {"choices":[{"delta":{"content":"hi"}}]}
+
+                data: {"usage":{"prompt_tokens":1200,"completion_tokens":300}}
+
+                data: [DONE]
+
+                """;
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add);
+        assertEquals("hi", result.content());
+        assertEquals(new Usage(1200, 300), result.usage());
+    }
+
+    @Test
+    void malformedUsageDoesNotBreakStream() throws Exception {
+        List<String> deltas = new ArrayList<>();
+        String sse = """
+                data: {"usage":"oops","choices":[{"delta":{"content":"hi"}}]}
+
+                data: [DONE]
+
+                """;
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add);
+        assertEquals("hi", result.content());
+        assertNull(result.usage());
+    }
+
+    @Test
+    void emptyUsageObjectYieldsNullUsage() throws Exception {
+        List<String> deltas = new ArrayList<>();
+        String sse = """
+                data: {"usage":{}}
+
+                data: [DONE]
+
+                """;
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add);
+        assertEquals("", result.content());
+        assertNull(result.usage());
     }
 }
