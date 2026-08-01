@@ -17,7 +17,6 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -176,7 +175,7 @@ class OpenAiCompatibleProviderTest {
                 .setBody("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"));
         ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { });
         assertTrue(response.usageEstimated());
-        assertTrue(response.usage().promptTokens() >= 1);
+        assertEquals(1, response.usage().promptTokens());
         assertEquals(1, response.usage().completionTokens());
     }
 
