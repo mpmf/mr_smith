@@ -92,7 +92,7 @@ public class OpenAiCompatibleProvider implements Provider {
             partial.append(delta);
         };
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.body()))) {
-            SseResult result = SseParser.consume(reader, sink);
+            SseResult result = SseParser.consume(reader, sink, s -> { });
             ChatMessage message = new ChatMessage(Role.ASSISTANT, result.content());
             Usage usage = result.usage();
             boolean estimated = false;

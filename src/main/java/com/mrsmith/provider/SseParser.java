@@ -14,8 +14,10 @@ public final class SseParser {
     private SseParser() {
     }
 
-    public static SseResult consume(BufferedReader reader, Consumer<String> deltaSink) throws IOException {
-        StringBuilder full = new StringBuilder();
+    public static SseResult consume(BufferedReader reader, Consumer<String> contentSink,
+                                    Consumer<String> reasoningSink) throws IOException {
+        StringBuilder content = new StringBuilder();
+        StringBuilder thinking = new StringBuilder();
         Usage usage = null;
         String line;
         while ((line = reader.readLine()) != null) {
@@ -39,14 +41,27 @@ public final class SseParser {
             }
             JsonNode delta = node.path("choices").path(0).path("delta");
             if (!delta.isMissingNode()) {
-                String content = delta.path("content").asText(null);
-                if (content != null && !content.isEmpty()) {
-                    deltaSink.accept(content);
-                    full.append(content);
+                String reasoning = extractReasoning(delta);
+                if (reasoning != null && !reasoning.isEmpty()) {
+                    reasoningSink.accept(reasoning);
+                    thinking.append(reasoning);
+                }
+                String contentDelta = delta.path("content").asText(null);
+                if (contentDelta != null && !contentDelta.isEmpty()) {
+                    contentSink.accept(contentDelta);
+                    content.append(contentDelta);
                 }
             }
         }
-        return new SseResult(full.toString(), usage);
+        return new SseResult(content.toString(), thinking.isEmpty() ? null : thinking.toString(), usage);
+    }
+
+    private static String extractReasoning(JsonNode delta) {
+        String reasoning = delta.path("reasoning_content").asText(null);
+        if (reasoning == null) {
+            reasoning = delta.path("reasoning").asText(null);
+        }
+        return reasoning;
     }
 
     private static JsonNode parse(String payload) {

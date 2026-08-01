@@ -23,7 +23,7 @@ class SseParserTest {
                 data: [DONE]
 
                 """;
-        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add);
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add, s -> { });
         assertEquals("Hello world", result.content());
         assertEquals(List.of("Hello", " world"), deltas);
         assertNull(result.usage());
@@ -40,7 +40,7 @@ class SseParserTest {
                 data: [DONE]
 
                 """;
-        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add);
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add, s -> { });
         assertEquals("hi", result.content());
         assertEquals(List.of("hi"), deltas);
     }
@@ -51,7 +51,7 @@ class SseParserTest {
         String sse = """
                 data: {"choices":[{"delta":{"content":"partial"}}]}
                 """;
-        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add);
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add, s -> { });
         assertEquals("partial", result.content());
     }
 
@@ -66,7 +66,7 @@ class SseParserTest {
                 data: [DONE]
 
                 """;
-        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add);
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add, s -> { });
         assertEquals("ok", result.content());
         assertEquals(List.of("ok"), deltas);
     }
@@ -82,7 +82,7 @@ class SseParserTest {
                 data: [DONE]
 
                 """;
-        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add);
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add, s -> { });
         assertEquals("hi", result.content());
         assertEquals(new Usage(1200, 300), result.usage());
     }
@@ -96,7 +96,7 @@ class SseParserTest {
                 data: [DONE]
 
                 """;
-        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add);
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add, s -> { });
         assertEquals("hi", result.content());
         assertNull(result.usage());
     }
@@ -110,8 +110,55 @@ class SseParserTest {
                 data: [DONE]
 
                 """;
-        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add);
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add, s -> { });
         assertEquals("", result.content());
         assertNull(result.usage());
+    }
+
+    @Test
+    void extractsReasoningFromReasoningContent() throws Exception {
+        List<String> deltas = new ArrayList<>();
+        List<String> reasoning = new ArrayList<>();
+        String sse = """
+                data: {"choices":[{"delta":{"reasoning_content":"think "}}]}
+
+                data: {"choices":[{"delta":{"reasoning_content":"hard"}}]}
+
+                data: {"choices":[{"delta":{"content":"answer"}}]}
+
+                data: [DONE]
+
+                """;
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add, reasoning::add);
+        assertEquals("answer", result.content());
+        assertEquals("think hard", result.thinking());
+        assertEquals(List.of("think ", "hard"), reasoning);
+    }
+
+    @Test
+    void fallsBackToReasoningField() throws Exception {
+        List<String> reasoning = new ArrayList<>();
+        String sse = """
+                data: {"choices":[{"delta":{"reasoning":"ponder"}}]}
+
+                data: [DONE]
+
+                """;
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), s -> { }, reasoning::add);
+        assertEquals("ponder", result.thinking());
+        assertEquals(List.of("ponder"), reasoning);
+    }
+
+    @Test
+    void thinkingIsNullWhenNoReasoningFields() throws Exception {
+        String sse = """
+                data: {"choices":[{"delta":{"content":"hi"}}]}
+
+                data: [DONE]
+
+                """;
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), s -> { }, s -> { });
+        assertEquals("hi", result.content());
+        assertNull(result.thinking());
     }
 }
