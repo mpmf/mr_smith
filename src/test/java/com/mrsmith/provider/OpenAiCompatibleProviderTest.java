@@ -52,7 +52,7 @@ class OpenAiCompatibleProviderTest {
 
                         """));
         List<String> deltas = new ArrayList<>();
-        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hello")), deltas::add);
+        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hello")), deltas::add, s -> { });
         assertEquals("Hi there", response.message().content());
         assertEquals(List.of("Hi", " there"), deltas);
         assertNotNull(response.usage());
@@ -62,7 +62,7 @@ class OpenAiCompatibleProviderTest {
     @Test
     void sendsCorrectRequestBodyAndAuth() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));
-        provider.send(List.of(new ChatMessage(Role.USER, "hello")), s -> { });
+        provider.send(List.of(new ChatMessage(Role.USER, "hello")), s -> { }, s -> { });
         RecordedRequest request = server.takeRequest();
         assertEquals("Bearer sk-test", request.getHeader("Authorization"));
         assertEquals("/chat/completions", request.getPath());
@@ -79,7 +79,7 @@ class OpenAiCompatibleProviderTest {
         AppConfig config = new AppConfig("sk-test", server.url("/").toString(), "test-model", "You are helpful");
         provider = new OpenAiCompatibleProvider(config, HttpClient.newHttpClient(), 0L);
         server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));
-        provider.send(List.of(new ChatMessage(Role.USER, "hello")), s -> { });
+        provider.send(List.of(new ChatMessage(Role.USER, "hello")), s -> { }, s -> { });
         RecordedRequest request = server.takeRequest();
         String body = request.getBody().readUtf8();
         assertTrue(body.contains("\"role\":\"system\""));
@@ -90,7 +90,7 @@ class OpenAiCompatibleProviderTest {
     void throwsOn4xx() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(401).setBody("{\"error\":\"invalid key\"}"));
         ProviderException e = assertThrows(ProviderException.class,
-                () -> provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { }));
+                () -> provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { }, s -> { }));
         assertTrue(e.getMessage().contains("401"));
     }
 
@@ -101,7 +101,7 @@ class OpenAiCompatibleProviderTest {
                 .setHeader("Content-Type", "text/event-stream")
                 .setBody("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"));
         List<String> deltas = new ArrayList<>();
-        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), deltas::add);
+        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), deltas::add, s -> { });
         assertEquals("ok", response.message().content());
         assertEquals(2, server.getRequestCount());
     }
@@ -111,7 +111,7 @@ class OpenAiCompatibleProviderTest {
         server.enqueue(new MockResponse().setResponseCode(500).setBody("boom"));
         server.enqueue(new MockResponse().setResponseCode(502).setBody("boom2"));
         ProviderException e = assertThrows(ProviderException.class,
-                () -> provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { }));
+                () -> provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { }, s -> { }));
         assertTrue(e.getMessage().contains("502"));
         assertEquals(2, server.getRequestCount());
     }
@@ -132,7 +132,7 @@ class OpenAiCompatibleProviderTest {
                         """));
         List<String> deltas = new ArrayList<>();
         ProviderException e = assertThrows(ProviderException.class,
-                () -> provider.send(List.of(new ChatMessage(Role.USER, "hi")), deltas::add));
+                () -> provider.send(List.of(new ChatMessage(Role.USER, "hi")), deltas::add, s -> { }));
         assertTrue(e.hasPartialContent());
         assertEquals(String.join("", deltas), e.partialContent());
         assertTrue(e.getMessage().contains("interrupted"));
@@ -145,7 +145,7 @@ class OpenAiCompatibleProviderTest {
                 .setHeader("Content-Type", "text/event-stream")
                 .setBody("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"));
         List<String> deltas = new ArrayList<>();
-        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), deltas::add);
+        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), deltas::add, s -> { });
         assertEquals("ok", response.message().content());
         assertEquals(2, server.getRequestCount());
     }
@@ -162,7 +162,7 @@ class OpenAiCompatibleProviderTest {
                         data: [DONE]
 
                         """));
-        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { });
+        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { }, s -> { });
         assertEquals("ok", response.message().content());
         assertEquals(new Usage(1200, 300), response.usage());
         assertFalse(response.usageEstimated());
@@ -173,7 +173,7 @@ class OpenAiCompatibleProviderTest {
         server.enqueue(new MockResponse().setResponseCode(200)
                 .setHeader("Content-Type", "text/event-stream")
                 .setBody("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"));
-        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { });
+        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { }, s -> { });
         assertTrue(response.usageEstimated());
         assertEquals(1, response.usage().promptTokens());
         assertEquals(1, response.usage().completionTokens());
@@ -187,8 +187,50 @@ class OpenAiCompatibleProviderTest {
         AppConfig config = new AppConfig("sk-test", server.url("/").toString(), "test-model", null, null, false);
         provider = new OpenAiCompatibleProvider(config, HttpClient.newHttpClient(), 0L);
         server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));
-        provider.send(List.of(new ChatMessage(Role.USER, "hello")), s -> { });
+        provider.send(List.of(new ChatMessage(Role.USER, "hello")), s -> { }, s -> { });
         RecordedRequest request = server.takeRequest();
         assertFalse(request.getBody().readUtf8().contains("stream_options"));
+    }
+
+    @Test
+    void streamsReasoningToSink() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("""
+                        data: {"choices":[{"delta":{"reasoning_content":"think"}}]}
+
+                        data: {"choices":[{"delta":{"content":"ok"}}]}
+
+                        data: [DONE]
+
+                        """));
+        List<String> content = new ArrayList<>();
+        List<String> reasoning = new ArrayList<>();
+        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), content::add, reasoning::add);
+        assertEquals(List.of("think"), reasoning);
+        assertEquals("ok", response.message().content());
+        assertEquals("think", response.message().thinking());
+    }
+
+    @Test
+    void reasoningNotSentBackInHistory() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200)
+                .setBody("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"secret thinking\",\"content\":\"hello\"}}]}\n\ndata: [DONE]\n\n"));
+        server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));
+        List<ChatMessage> history = new ArrayList<>();
+        history.add(new ChatMessage(Role.USER, "first"));
+        ProviderResponse first = provider.send(history, s -> { }, s -> { });
+        assertEquals("secret thinking", first.message().thinking());
+        RecordedRequest firstRequest = server.takeRequest();
+        String firstBody = firstRequest.getBody().readUtf8();
+        assertTrue(firstBody.contains("\"content\":\"first\""));
+        assertFalse(firstBody.contains("secret thinking"));
+        history.add(first.message());
+        history.add(new ChatMessage(Role.USER, "second"));
+        provider.send(history, s -> { }, s -> { });
+        RecordedRequest secondRequest = server.takeRequest();
+        String secondBody = secondRequest.getBody().readUtf8();
+        assertTrue(secondBody.contains("\"content\":\"hello\""));
+        assertFalse(secondBody.contains("secret thinking"));
     }
 }

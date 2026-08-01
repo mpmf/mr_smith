@@ -40,9 +40,10 @@ public class OpenAiCompatibleProvider implements Provider {
     }
 
     @Override
-    public ProviderResponse send(List<ChatMessage> history, Consumer<String> tokenSink) {
+    public ProviderResponse send(List<ChatMessage> history, Consumer<String> tokenSink,
+                                 Consumer<String> reasoningSink) {
         try {
-            return doSend(history, tokenSink);
+            return doSend(history, tokenSink, reasoningSink);
         } catch (ProviderException e) {
             throw e;
         } catch (IOException | InterruptedException e) {
@@ -52,11 +53,12 @@ public class OpenAiCompatibleProvider implements Provider {
         }
     }
 
-    private ProviderResponse doSend(List<ChatMessage> history, Consumer<String> tokenSink)
+    private ProviderResponse doSend(List<ChatMessage> history, Consumer<String> tokenSink,
+                                    Consumer<String> reasoningSink)
             throws IOException, InterruptedException {
         HttpRequest request = buildRequest(buildRequestBody(history));
         HttpResponse<InputStream> response = sendWithRetry(request);
-        return handleResponse(response, history, tokenSink);
+        return handleResponse(response, history, tokenSink, reasoningSink);
     }
 
     private HttpResponse<InputStream> sendWithRetry(HttpRequest request)
@@ -77,7 +79,7 @@ public class OpenAiCompatibleProvider implements Provider {
     }
 
     private ProviderResponse handleResponse(HttpResponse<InputStream> response, List<ChatMessage> history,
-                                            Consumer<String> tokenSink) {
+                                            Consumer<String> tokenSink, Consumer<String> reasoningSink) {
         if (response.statusCode() >= 500) {
             throw new ProviderException("Provider error HTTP " + response.statusCode()
                     + " after retry: " + errorBody(response));
@@ -87,29 +89,35 @@ public class OpenAiCompatibleProvider implements Provider {
                     + ": " + errorBody(response));
         }
         StringBuilder partial = new StringBuilder();
+        StringBuilder partialThinking = new StringBuilder();
         Consumer<String> sink = delta -> {
             tokenSink.accept(delta);
             partial.append(delta);
         };
+        Consumer<String> reasoning = delta -> {
+            reasoningSink.accept(delta);
+            partialThinking.append(delta);
+        };
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.body()))) {
-            SseResult result = SseParser.consume(reader, sink, s -> { });
-            ChatMessage message = new ChatMessage(Role.ASSISTANT, result.content());
+            SseResult result = SseParser.consume(reader, sink, reasoning);
+            ChatMessage message = new ChatMessage(Role.ASSISTANT, result.content(), result.thinking());
             Usage usage = result.usage();
             boolean estimated = false;
             if (usage == null) {
-                usage = estimateUsage(history, result.content());
+                usage = estimateUsage(history, result.content(), result.thinking());
                 estimated = true;
             }
             return new ProviderResponse(message, usage, estimated);
         } catch (IOException e) {
             String text = partial.isEmpty() ? null : partial.toString();
+            String thinking = partialThinking.isEmpty() ? null : partialThinking.toString();
             throw new ProviderException(text == null
                     ? "Network error during request: " + e.getMessage()
-                    : "Stream interrupted: " + e.getMessage(), e, text);
+                    : "Stream interrupted: " + e.getMessage(), e, text, thinking);
         }
     }
 
-    private Usage estimateUsage(List<ChatMessage> history, String replyContent) {
+    private Usage estimateUsage(List<ChatMessage> history, String replyContent, String thinking) {
         int prompt = 0;
         if (config.systemPrompt() != null) {
             prompt += TokenEstimator.estimateTokens(config.systemPrompt());
@@ -117,7 +125,11 @@ public class OpenAiCompatibleProvider implements Provider {
         for (ChatMessage message : history) {
             prompt += TokenEstimator.estimateTokens(message.content());
         }
-        return new Usage(prompt, TokenEstimator.estimateTokens(replyContent));
+        int completion = TokenEstimator.estimateTokens(replyContent);
+        if (thinking != null) {
+            completion += TokenEstimator.estimateTokens(thinking);
+        }
+        return new Usage(prompt, completion);
     }
 
     private String buildRequestBody(List<ChatMessage> history) {

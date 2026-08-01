@@ -15,13 +15,14 @@ import java.util.Locale;
 
 public class ChatSession {
 
+    private static final int WARN_THRESHOLD_PERCENT = 85;
+    private static final int LIMIT_PERCENT = 100;
+
     private final Provider provider;
     private final IO io;
     private final AppConfig config;
     private final List<ChatMessage> history = new ArrayList<>();
     private final UsageTracker tracker = new UsageTracker();
-    private static final int WARN_THRESHOLD_PERCENT = 85;
-    private static final int LIMIT_PERCENT = 100;
     private boolean warned85;
     private boolean warned100;
 
@@ -43,7 +44,7 @@ public class ChatSession {
             }
             history.add(new ChatMessage(Role.USER, line));
             try {
-                ProviderResponse response = provider.send(history, io::write);
+                ProviderResponse response = provider.send(history, io::write, io::writeReasoning);
                 history.add(response.message());
                 io.writeLine("");
                 tracker.recordTurn(response.usage(), response.usageEstimated());
@@ -53,8 +54,8 @@ public class ChatSession {
                 }
                 warnIfNearLimit();
             } catch (ProviderException e) {
-                if (e.hasPartialContent()) {
-                    history.add(new ChatMessage(Role.ASSISTANT, e.partialContent()));
+                if (e.hasPartialContent() || e.partialThinking() != null) {
+                    history.add(new ChatMessage(Role.ASSISTANT, e.partialContent(), e.partialThinking()));
                 }
                 io.writeLine("");
                 io.writeLine("Error: " + e.getMessage());

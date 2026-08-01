@@ -71,7 +71,7 @@ class ChatSessionTest {
 
     @Test
     void providerErrorIsShownAndLoopContinues() throws Exception {
-        Provider failing = (history, sink) -> {
+        Provider failing = (history, sink, reasoningSink) -> {
             throw new ProviderException("HTTP 401: bad key");
         };
         FakeProvider ok = new FakeProvider();
@@ -84,7 +84,7 @@ class ChatSessionTest {
 
     @Test
     void partialContentFromInterruptedStreamIsKeptInHistory() throws Exception {
-        Provider interrupted = (history, sink) -> {
+        Provider interrupted = (history, sink, reasoningSink) -> {
             sink.accept("partial");
             throw new ProviderException("Stream interrupted", null, "partial");
         };
@@ -100,7 +100,7 @@ class ChatSessionTest {
 
     @Test
     void genericProviderFailureIsShownAndLoopContinues() throws Exception {
-        Provider failing = (history, sink) -> {
+        Provider failing = (history, sink, reasoningSink) -> {
             throw new IllegalStateException("boom");
         };
         FakeProvider ok = new FakeProvider();
@@ -179,6 +179,42 @@ class ChatSessionTest {
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("  context limit: 128,000 configured (1% used)")));
     }
 
+    @Test
+    void streamsReasoningThroughIo() throws Exception {
+        FakeProvider provider = new FakeProvider(new Usage(100, 50), true, "ponder");
+        StubIo io = new StubIo(List.of("hello", "/exit"));
+        ChatSession session = new ChatSession(provider, io, config());
+        session.run();
+        assertTrue(io.lines.contains("ponder"));
+    }
+
+    @Test
+    void storesThinkingInHistory() throws Exception {
+        FakeProvider ok = new FakeProvider(new Usage(0, 0), false, "ponder");
+        StubIo io = new StubIo(List.of("first", "second", "/exit"));
+        ChatSession session = new ChatSession(ok, io, config());
+        session.run();
+        List<ChatMessage> secondTurn = ok.receivedHistories.get(1);
+        assertEquals(3, secondTurn.size());
+        assertEquals("ponder", secondTurn.get(1).thinking());
+    }
+
+    @Test
+    void interruptedReasoningPreservesPartialThinking() throws Exception {
+        Provider interrupted = (history, sink, reasoningSink) -> {
+            reasoningSink.accept("half");
+            throw new ProviderException("Stream interrupted", null, null, "half");
+        };
+        FakeProvider ok = new FakeProvider(new Usage(0, 0), false);
+        StubIo io = new StubIo(List.of("hello", "again", "/exit"));
+        ChatSession session = new ChatSession(new FirstThenProvider(interrupted, ok), io, config());
+        session.run();
+        List<ChatMessage> secondTurn = ok.receivedHistories.get(0);
+        assertEquals(3, secondTurn.size());
+        assertEquals(Role.ASSISTANT, secondTurn.get(1).role());
+        assertEquals("half", secondTurn.get(1).thinking());
+    }
+
     private AppConfig config() {
         return config(null);
     }
@@ -220,26 +256,36 @@ class ChatSessionTest {
     static class FakeProvider implements Provider {
         final Usage turnUsage;
         final boolean estimated;
+        final String thinking;
         final List<List<ChatMessage>> receivedHistories = new ArrayList<>();
         int calls = 0;
 
         FakeProvider() {
-            this(new Usage(0, 0), false);
+            this(new Usage(0, 0), false, null);
         }
 
         FakeProvider(Usage turnUsage, boolean estimated) {
+            this(turnUsage, estimated, null);
+        }
+
+        FakeProvider(Usage turnUsage, boolean estimated, String thinking) {
             this.turnUsage = turnUsage;
             this.estimated = estimated;
+            this.thinking = thinking;
         }
 
         @Override
-        public ProviderResponse send(List<ChatMessage> history, Consumer<String> tokenSink) {
+        public ProviderResponse send(List<ChatMessage> history, Consumer<String> tokenSink,
+                                     Consumer<String> reasoningSink) {
             receivedHistories.add(new ArrayList<>(history));
             calls++;
             ChatMessage last = history.get(history.size() - 1);
             String reply = last.content() + " response";
             tokenSink.accept(reply);
-            return new ProviderResponse(new ChatMessage(Role.ASSISTANT, reply), turnUsage, estimated);
+            if (thinking != null) {
+                reasoningSink.accept(thinking);
+            }
+            return new ProviderResponse(new ChatMessage(Role.ASSISTANT, reply, thinking), turnUsage, estimated);
         }
     }
 
@@ -254,11 +300,12 @@ class ChatSessionTest {
         }
 
         @Override
-        public ProviderResponse send(List<ChatMessage> history, Consumer<String> tokenSink) {
+        public ProviderResponse send(List<ChatMessage> history, Consumer<String> tokenSink,
+                                     Consumer<String> reasoningSink) {
             if (calls++ == 0) {
-                return first.send(history, tokenSink);
+                return first.send(history, tokenSink, reasoningSink);
             }
-            return then.send(history, tokenSink);
+            return then.send(history, tokenSink, reasoningSink);
         }
     }
 }
