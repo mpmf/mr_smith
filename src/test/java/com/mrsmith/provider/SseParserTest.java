@@ -161,4 +161,35 @@ class SseParserTest {
         assertEquals("hi", result.content());
         assertNull(result.thinking());
     }
+
+    @Test
+    void emitsNewlineBeforeAnswerAfterReasoning() throws Exception {
+        List<String> deltas = new ArrayList<>();
+        List<String> reasoning = new ArrayList<>();
+        String sse = """
+                data: {"choices":[{"delta":{"reasoning_content":"think"}}]}
+
+                data: {"choices":[{"delta":{"content":"answer"}}]}
+
+                data: [DONE]
+
+                """;
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add, reasoning::add);
+        assertEquals(List.of("\n", "answer"), deltas);
+        assertEquals("answer", result.content());
+        assertEquals("think", result.thinking());
+    }
+
+    @Test
+    void noNewlineWhenNoReasoning() throws Exception {
+        List<String> deltas = new ArrayList<>();
+        String sse = """
+                data: {"choices":[{"delta":{"content":"hello"}}]}
+
+                data: [DONE]
+
+                """;
+        SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add, s -> { });
+        assertEquals(List.of("hello"), deltas);
+    }
 }
