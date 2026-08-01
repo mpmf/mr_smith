@@ -157,7 +157,7 @@ class OpenAiCompatibleProviderTest {
         List<String> reasoning = new ArrayList<>();
         ProviderException e = assertThrows(ProviderException.class,
                 () -> provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { }, reasoning::add));
-        assertTrue(e.partialThinking() != null);
+        assertNotNull(e.partialThinking());
         assertEquals(String.join("", reasoning), e.partialThinking());
     }
 
@@ -255,5 +255,22 @@ class OpenAiCompatibleProviderTest {
         String secondBody = secondRequest.getBody().readUtf8();
         assertTrue(secondBody.contains("\"content\":\"hello\""));
         assertFalse(secondBody.contains("secret thinking"));
+    }
+
+    @Test
+    void estimateCountsThinkingTokens() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("""
+                        data: {"choices":[{"delta":{"reasoning_content":"think"}}]}
+
+                        data: {"choices":[{"delta":{"content":"ok"}}]}
+
+                        data: [DONE]
+
+                        """));
+        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { }, s -> { });
+        assertTrue(response.usageEstimated());
+        assertEquals(3, response.usage().completionTokens());
     }
 }
