@@ -17,4 +17,12 @@ class ProviderExceptionTest {
         ProviderException plain = new ProviderException("HTTP 401: bad key");
         assertFalse(plain.hasPartialContent());
     }
+
+    @Test
+    void exposesOptionalPartialThinking() {
+        ProviderException e = new ProviderException("Stream interrupted", null, "partial", "think");
+        assertTrue(e.hasPartialContent());
+        assertEquals("partial", e.partialContent());
+        assertEquals("think", e.partialThinking());
+    }
 }
