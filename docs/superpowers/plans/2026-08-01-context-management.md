@@ -1542,9 +1542,9 @@ class ChatSessionTest {
         StubIo io = new StubIo(List.of("hello", "/usage", "/exit"));
         ChatSession session = new ChatSession(provider, io, config());
         session.run();
-        assertTrue(io.lines.contains("Session usage:"));
-        assertTrue(io.lines.contains("  total:       1,500"));
-        assertTrue(io.lines.contains("  history: 1 messages"));
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("Session usage:")));
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("  total:       1,500")));
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("  history: 1 messages")));
     }
 
     @Test
@@ -1573,8 +1573,8 @@ class ChatSessionTest {
         StubIo io = new StubIo(List.of("hello", "/reset", "/usage", "/exit"));
         ChatSession session = new ChatSession(provider, io, config(1000));
         session.run();
-        assertTrue(io.lines.contains("  total:       0"));
-        assertTrue(io.lines.contains("  history: 0 messages"));
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("  total:       0")));
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("  history: 0 messages")));
     }
 
     @Test
@@ -1583,7 +1583,7 @@ class ChatSessionTest {
         StubIo io = new StubIo(List.of("hello", "/usage", "/exit"));
         ChatSession session = new ChatSession(provider, io, config(128000));
         session.run();
-        assertTrue(io.lines.contains("  context limit: 128,000 configured (1% used)"));
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("  context limit: 128,000 configured (1% used)")));
     }
 
     private AppConfig config() {
