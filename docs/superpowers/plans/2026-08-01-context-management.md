@@ -1544,7 +1544,7 @@ class ChatSessionTest {
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("Session usage:")));
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("  total:       1,500")));
-        assertTrue(io.lines.stream().anyMatch(l -> l.contains("  history: 1 messages")));
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("  history: 2 messages")));
     }
 
     @Test

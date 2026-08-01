@@ -1,11 +1,13 @@
 package com.mrsmith.chat;
 
+import com.mrsmith.config.AppConfig;
 import com.mrsmith.io.IO;
 import com.mrsmith.provider.ChatMessage;
 import com.mrsmith.provider.Provider;
 import com.mrsmith.provider.ProviderException;
 import com.mrsmith.provider.ProviderResponse;
 import com.mrsmith.provider.Role;
+import com.mrsmith.provider.Usage;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -24,7 +26,7 @@ class ChatSessionTest {
     void sendsUserMessageAndStoresReplyInHistory() throws Exception {
         FakeProvider provider = new FakeProvider();
         StubIo io = new StubIo(List.of("hello", "/exit"));
-        ChatSession session = new ChatSession(provider, io);
+        ChatSession session = new ChatSession(provider, io, config());
         session.run();
         assertEquals(1, provider.receivedHistories.get(0).size());
         assertEquals(Role.USER, provider.receivedHistories.get(0).get(0).role());
@@ -36,7 +38,7 @@ class ChatSessionTest {
     void keepsContextAcrossTurns() throws Exception {
         FakeProvider provider = new FakeProvider();
         StubIo io = new StubIo(List.of("first", "second", "/exit"));
-        ChatSession session = new ChatSession(provider, io);
+        ChatSession session = new ChatSession(provider, io, config());
         session.run();
         assertEquals(2, provider.receivedHistories.size());
         List<ChatMessage> secondTurn = provider.receivedHistories.get(1);
@@ -50,7 +52,7 @@ class ChatSessionTest {
     void resetClearsHistory() throws Exception {
         FakeProvider provider = new FakeProvider();
         StubIo io = new StubIo(List.of("first", "/reset", "second", "/exit"));
-        ChatSession session = new ChatSession(provider, io);
+        ChatSession session = new ChatSession(provider, io, config());
         session.run();
         List<ChatMessage> secondTurn = provider.receivedHistories.get(1);
         assertEquals(1, secondTurn.size());
@@ -61,7 +63,7 @@ class ChatSessionTest {
     void unknownCommandIsNotSentToProvider() throws Exception {
         FakeProvider provider = new FakeProvider();
         StubIo io = new StubIo(List.of("/bogus", "/exit"));
-        ChatSession session = new ChatSession(provider, io);
+        ChatSession session = new ChatSession(provider, io, config());
         session.run();
         assertTrue(provider.receivedHistories.isEmpty());
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("Unknown command")));
@@ -74,7 +76,7 @@ class ChatSessionTest {
         };
         FakeProvider ok = new FakeProvider();
         StubIo io = new StubIo(List.of("hello", "again", "/exit"));
-        ChatSession session = new ChatSession(new FirstThenProvider(failing, ok), io);
+        ChatSession session = new ChatSession(new FirstThenProvider(failing, ok), io, config());
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("HTTP 401")));
         assertEquals(1, ok.calls);
@@ -88,7 +90,7 @@ class ChatSessionTest {
         };
         FakeProvider ok = new FakeProvider();
         StubIo io = new StubIo(List.of("hello", "again", "/exit"));
-        ChatSession session = new ChatSession(new FirstThenProvider(interrupted, ok), io);
+        ChatSession session = new ChatSession(new FirstThenProvider(interrupted, ok), io, config());
         session.run();
         List<ChatMessage> secondTurn = ok.receivedHistories.get(0);
         assertEquals(3, secondTurn.size());
@@ -103,10 +105,87 @@ class ChatSessionTest {
         };
         FakeProvider ok = new FakeProvider();
         StubIo io = new StubIo(List.of("hello", "again", "/exit"));
-        ChatSession session = new ChatSession(new FirstThenProvider(failing, ok), io);
+        ChatSession session = new ChatSession(new FirstThenProvider(failing, ok), io, config());
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("boom")));
         assertEquals(1, ok.calls);
+    }
+
+    @Test
+    void printsPerTurnUsageLine() throws Exception {
+        FakeProvider provider = new FakeProvider(new Usage(1200, 300), false);
+        StubIo io = new StubIo(List.of("hello", "/exit"));
+        ChatSession session = new ChatSession(provider, io, config());
+        session.run();
+        assertTrue(io.lines.contains("tokens: 1,200 in · 300 out · total 1,500 · session 1,500"));
+    }
+
+    @Test
+    void usageLineFlagsEstimates() throws Exception {
+        FakeProvider provider = new FakeProvider(new Usage(100, 50), true);
+        StubIo io = new StubIo(List.of("hello", "/exit"));
+        ChatSession session = new ChatSession(provider, io, config());
+        session.run();
+        assertTrue(io.lines.contains("tokens: 100 in (est.) · 50 out (est.) · total 150 · session 150 (est.)"));
+    }
+
+    @Test
+    void usageCommandPrintsReport() throws Exception {
+        FakeProvider provider = new FakeProvider(new Usage(1200, 300), false);
+        StubIo io = new StubIo(List.of("hello", "/usage", "/exit"));
+        ChatSession session = new ChatSession(provider, io, config());
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("Session usage:")));
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("  total:       1,500")));
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("  history: 2 messages")));
+    }
+
+    @Test
+    void warnsAtEightyFiveAndHundredPercent() throws Exception {
+        FakeProvider provider = new FakeProvider(new Usage(900, 0), false);
+        StubIo io = new StubIo(List.of("hello", "again", "once more", "/exit"));
+        ChatSession session = new ChatSession(provider, io, config(1000));
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("session at 90% of your configured 1,000-token context limit")));
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("session reached 100% of your configured 1,000-token context limit")));
+    }
+
+    @Test
+    void warnsOncePerThreshold() throws Exception {
+        FakeProvider provider = new FakeProvider(new Usage(900, 0), false);
+        StubIo io = new StubIo(List.of("a", "b", "c", "d", "e", "/exit"));
+        ChatSession session = new ChatSession(provider, io, config(1000));
+        session.run();
+        long warnings = io.lines.stream().filter(l -> l.startsWith("Warning:")).count();
+        assertEquals(2, warnings);
+    }
+
+    @Test
+    void resetClearsUsageTracker() throws Exception {
+        FakeProvider provider = new FakeProvider(new Usage(900, 0), false);
+        StubIo io = new StubIo(List.of("hello", "/reset", "/usage", "/exit"));
+        ChatSession session = new ChatSession(provider, io, config(1000));
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("  total:       0")));
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("  history: 0 messages")));
+    }
+
+    @Test
+    void usageReportShowsContextLimitWhenConfigured() throws Exception {
+        FakeProvider provider = new FakeProvider(new Usage(1200, 300), false);
+        StubIo io = new StubIo(List.of("hello", "/usage", "/exit"));
+        ChatSession session = new ChatSession(provider, io, config(128000));
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("  context limit: 128,000 configured (1% used)")));
+    }
+
+    private AppConfig config() {
+        return config(null);
+    }
+
+    private AppConfig config(Integer maxContextTokens) {
+        return new AppConfig("sk-test", "https://example.com/v1", "test-model", null,
+                maxContextTokens, true);
     }
 
     static class StubIo implements IO {
@@ -134,8 +213,19 @@ class ChatSessionTest {
     }
 
     static class FakeProvider implements Provider {
+        final Usage turnUsage;
+        final boolean estimated;
         final List<List<ChatMessage>> receivedHistories = new ArrayList<>();
         int calls = 0;
+
+        FakeProvider() {
+            this(new Usage(0, 0), false);
+        }
+
+        FakeProvider(Usage turnUsage, boolean estimated) {
+            this.turnUsage = turnUsage;
+            this.estimated = estimated;
+        }
 
         @Override
         public ProviderResponse send(List<ChatMessage> history, Consumer<String> tokenSink) {
@@ -144,7 +234,7 @@ class ChatSessionTest {
             ChatMessage last = history.get(history.size() - 1);
             String reply = last.content() + " response";
             tokenSink.accept(reply);
-            return new ProviderResponse(new ChatMessage(Role.ASSISTANT, reply), null, false);
+            return new ProviderResponse(new ChatMessage(Role.ASSISTANT, reply), turnUsage, estimated);
         }
     }
 

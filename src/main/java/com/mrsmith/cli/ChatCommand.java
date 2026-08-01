@@ -50,7 +50,7 @@ public class ChatCommand implements Callable<Integer> {
 
         Provider provider = new OpenAiCompatibleProvider(config);
         IO io = new ReplIo();
-        ChatSession session = new ChatSession(provider, io);
+        ChatSession session = new ChatSession(provider, io, config);
         try {
             session.run();
         } catch (IOException e) {
