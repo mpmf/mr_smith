@@ -4,3 +4,4 @@ target/
 .DS_Store
 *.class
 .worktrees/
+dependency-reduced-pom.xml
