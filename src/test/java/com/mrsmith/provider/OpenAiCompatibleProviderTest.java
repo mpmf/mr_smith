@@ -75,11 +75,12 @@ class OpenAiCompatibleProviderTest {
     }
 
     @Test
-    void includesSystemPromptWhenConfigured() throws Exception {
-        AppConfig config = new AppConfig("sk-test", server.url("/").toString(), "test-model", "You are helpful");
-        provider = new OpenAiCompatibleProvider(config, HttpClient.newHttpClient(), 0L);
+    void serializesSystemMessageVerbatim() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));
-        provider.send(List.of(new ChatMessage(Role.USER, "hello")), s -> { }, s -> { });
+        List<ChatMessage> context = List.of(
+                new ChatMessage(Role.SYSTEM, "You are helpful"),
+                new ChatMessage(Role.USER, "hello"));
+        provider.send(context, s -> { }, s -> { });
         RecordedRequest request = server.takeRequest();
         String body = request.getBody().readUtf8();
         assertTrue(body.contains("\"role\":\"system\""));
@@ -272,5 +273,14 @@ class OpenAiCompatibleProviderTest {
         ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { }, s -> { });
         assertTrue(response.usageEstimated());
         assertEquals(3, response.usage().completionTokens());
+    }
+
+    @Test
+    void coercesNullContentToEmptyString() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));
+        List<ChatMessage> context = List.of(new ChatMessage(Role.ASSISTANT, null, "think"));
+        provider.send(context, s -> { }, s -> { });
+        RecordedRequest request = server.takeRequest();
+        assertTrue(request.getBody().readUtf8().contains("\"content\":\"\""));
     }
 }

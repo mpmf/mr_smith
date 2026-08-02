@@ -25,21 +25,25 @@ public class ChatSession {
     private final IO io;
     private final AppConfig config;
     private final TranscriptWriter transcripts;
+    private final ContextBuilder contextBuilder;
     private final List<ChatMessage> history = new ArrayList<>();
     private final UsageTracker tracker = new UsageTracker();
     private boolean warned85;
     private boolean warned100;
     private UUID currentSessionId;
 
-    public ChatSession(Provider provider, IO io, AppConfig config, TranscriptWriter transcripts) {
+    public ChatSession(Provider provider, IO io, AppConfig config, TranscriptWriter transcripts,
+                       ContextBuilder contextBuilder) {
         this.provider = provider;
         this.io = io;
         this.config = config;
         this.transcripts = transcripts;
+        this.contextBuilder = contextBuilder;
     }
 
     public void run() throws IOException {
         io.writeLine("Mr Smith. Type /help for commands, /exit to quit.");
+        contextBuilder.start(config.systemPrompt());
         startNewSession();
         String line;
         while ((line = io.readLine()) != null) {
@@ -51,9 +55,12 @@ public class ChatSession {
             }
             history.add(new ChatMessage(Role.USER, line));
             appendUser(line);
+            contextBuilder.appendUser(line);
             try {
-                ProviderResponse response = provider.send(history, io::write, io::writeReasoning);
+                List<ChatMessage> context = contextBuilder.messages();
+                ProviderResponse response = provider.send(context, io::write, io::writeReasoning);
                 history.add(response.message());
+                contextBuilder.appendAssistant(response.message().content());
                 appendAssistant(response.message().content(), response.message().thinking(),
                         response.usage(), response.usageEstimated());
                 io.writeLine("");
@@ -66,6 +73,7 @@ public class ChatSession {
             } catch (ProviderException e) {
                 if (e.hasPartialContent() || e.partialThinking() != null) {
                     history.add(new ChatMessage(Role.ASSISTANT, e.partialContent(), e.partialThinking()));
+                    contextBuilder.appendAssistant(e.partialContent());
                     appendAssistant(e.partialContent(), e.partialThinking(), null, false);
                 }
                 io.writeLine("");
@@ -153,6 +161,7 @@ public class ChatSession {
         switch (line) {
             case "/reset" -> {
                 history.clear();
+                contextBuilder.start(config.systemPrompt());
                 tracker.reset();
                 warned85 = false;
                 warned100 = false;

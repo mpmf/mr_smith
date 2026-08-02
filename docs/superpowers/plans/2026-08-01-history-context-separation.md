@@ -2,18 +2,18 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Separate the concept of **context** (the message list sent to the provider) from **history** (the full conversation record stored and transcribed), via a `ContextBuilder` port, so compaction can later change only how the context is derived.
+**Goal:** Separate the concept of **context** (the message list sent to the provider) from **history** (the full conversation record stored and transcribed), via a **stateful, incremental** `ContextBuilder` port that future strategies (windowing, compaction) can implement differently.
 
-**Architecture:** A `ContextBuilder` port with a `FullContextBuilder` implementation derives the context each turn: system prompt (if any) + all history messages with `thinking` stripped. `ChatSession` builds the context and passes it to `provider.send`. The provider serializes exactly the messages it is given and estimates usage over them — it no longer injects the system prompt. History (including thinking) and the transcript are unchanged.
+**Architecture:** `ContextBuilder` is a stateful port: `start(systemPrompt)` resets the window, `appendUser`/`appendAssistant` feed interactions one at a time, and `messages()` returns the current context. `FullContextBuilder` is the single strategy for now (full accumulation, identical behavior to today). `ChatSession` calls `start` at session start and `/reset`, feeds each interaction, and sends `messages()` to the provider. The provider serializes exactly what it is given and estimates usage over it — it no longer injects the system prompt. History (including thinking) and the transcript are unchanged.
 
 **Tech Stack:** Java 21 · Maven · JUnit 5. No new dependencies.
 
-**Spec:** `docs/superpowers/specs/2026-08-01-history-context-separation-design.md`
+**Spec:** `docs/superpowers/specs/2026-08-01-history-context-separation-design.md` (revised: incremental/stateful builder)
 
 **Design notes:**
-- The provider change (drop system-prompt injection) and the session change (build the context including system) are **atomic**: they land in one task to avoid a window where the CLI drops or doubles the system prompt.
-- `ChatSession` constructor grows to 5 args `(Provider, IO, AppConfig, TranscriptWriter, ContextBuilder)`.
-- `AppConfig.systemPrompt()` stays (used by `ChatSession` → `FullContextBuilder`); the provider no longer reads it.
+- The provider change (drop system-prompt injection) and the session change (feed the incremental builder) are **atomic**: they land in one task to avoid a window where the CLI drops or doubles the system prompt.
+- `ChatSession` constructor has 5 args `(Provider, IO, AppConfig, TranscriptWriter, ContextBuilder)`.
+- `AppConfig.systemPrompt()` stays (used by `ChatSession` → `ContextBuilder.start`); the provider no longer reads it.
 
 ## File Structure
 
@@ -23,14 +23,14 @@ All paths relative to repo root `/Users/marcoferreira/Projects/mr_smith`.
 
 | File | Responsibility |
 |---|---|
-| `ContextBuilder.java` | Port: `List<ChatMessage> build(List<ChatMessage> history, String systemPrompt)` |
-| `FullContextBuilder.java` | System message (if any) + history messages rebuilt without thinking |
+| `ContextBuilder.java` | Stateful port: `start(String)`, `appendUser(String)`, `appendAssistant(String)`, `List<ChatMessage> messages()` |
+| `FullContextBuilder.java` | Full-accumulation strategy; `start` seeds system; `messages()` immutable snapshot |
 
 **Modified:**
 
 | File | Change |
 |---|---|
-| `chat/ChatSession.java` | 5th ctor arg `ContextBuilder`; build context per turn and pass to provider |
+| `chat/ChatSession.java` | 5th ctor arg `ContextBuilder`; `start` per session; feed appends; send `messages()` |
 | `provider/OpenAiCompatibleProvider.java` | Serialize given messages verbatim; estimate over them; drop system-prompt handling |
 | `cli/ChatCommand.java` | Inject `new FullContextBuilder()` |
 
@@ -44,11 +44,9 @@ All paths relative to repo root `/Users/marcoferreira/Projects/mr_smith`.
 - Single test class: `mvn -q test -Dtest=ClassName`
 - Package: `mvn -q package` → `target/mr-smith.jar`
 
-Current baseline: 102 tests, all green on `master`.
-
 ---
 
-### Task 1: ContextBuilder Port and FullContextBuilder
+### Task 1: ContextBuilder Port and FullContextBuilder (incremental)
 
 **Files:**
 - Create: `src/main/java/com/mrsmith/chat/ContextBuilder.java`
@@ -67,50 +65,67 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FullContextBuilderTest {
 
     private final FullContextBuilder builder = new FullContextBuilder();
 
     @Test
-    void prependsSystemPromptAndStripsThinking() {
-        List<ChatMessage> history = List.of(
-                new ChatMessage(Role.USER, "hello"),
-                new ChatMessage(Role.ASSISTANT, "hi", "ponder"));
-        List<ChatMessage> context = builder.build(history, "You are helpful");
-        assertEquals(3, context.size());
+    void startSeedsSystemPrompt() {
+        builder.start("You are helpful");
+        List<ChatMessage> context = builder.messages();
+        assertEquals(1, context.size());
         assertEquals(Role.SYSTEM, context.get(0).role());
         assertEquals("You are helpful", context.get(0).content());
-        assertEquals(Role.USER, context.get(1).role());
-        assertEquals("hello", context.get(1).content());
-        assertEquals(Role.ASSISTANT, context.get(2).role());
-        assertEquals("hi", context.get(2).content());
-        assertNull(context.get(2).thinking());
     }
 
     @Test
-    void omitsSystemMessageWhenPromptNull() {
-        List<ChatMessage> history = List.of(new ChatMessage(Role.USER, "hello"));
-        List<ChatMessage> context = builder.build(history, null);
-        assertEquals(1, context.size());
+    void startWithoutSystemPromptSeedsNothing() {
+        builder.start(null);
+        assertTrue(builder.messages().isEmpty());
+    }
+
+    @Test
+    void appendsAccumulateInOrder() {
+        builder.start(null);
+        builder.appendUser("hello");
+        builder.appendAssistant("hi");
+        builder.appendUser("again");
+        List<ChatMessage> context = builder.messages();
+        assertEquals(3, context.size());
         assertEquals("hello", context.get(0).content());
+        assertEquals("hi", context.get(1).content());
+        assertEquals("again", context.get(2).content());
     }
 
     @Test
-    void preservesNullContent() {
-        List<ChatMessage> history = List.of(new ChatMessage(Role.ASSISTANT, null, "think"));
-        List<ChatMessage> context = builder.build(history, null);
+    void startResetsTheWindow() {
+        builder.start(null);
+        builder.appendUser("one");
+        builder.start("sys");
+        List<ChatMessage> context = builder.messages();
         assertEquals(1, context.size());
-        assertNull(context.get(0).content());
-        assertNull(context.get(0).thinking());
+        assertEquals("sys", context.get(0).content());
     }
 
     @Test
-    void emptyHistoryWithSystemPrompt() {
-        List<ChatMessage> context = builder.build(List.of(), "sys");
-        assertEquals(1, context.size());
-        assertEquals(Role.SYSTEM, context.get(0).role());
+    void messagesHasNoThinking() {
+        builder.start(null);
+        builder.appendAssistant("answer");
+        ChatMessage message = builder.messages().get(0);
+        assertEquals(Role.ASSISTANT, message.role());
+        assertEquals("answer", message.content());
+        assertTrue(message.thinking() == null);
+    }
+
+    @Test
+    void messagesIsImmutable() {
+        builder.start(null);
+        builder.appendUser("hello");
+        List<ChatMessage> context = builder.messages();
+        assertThrows(UnsupportedOperationException.class, () -> context.add(new ChatMessage(Role.USER, "x")));
     }
 }
 ```
@@ -118,7 +133,7 @@ class FullContextBuilderTest {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `mvn -q test -Dtest=FullContextBuilderTest`
-Expected: FAIL — compilation error, `FullContextBuilder` not defined.
+Expected: FAIL — compilation error, `FullContextBuilder` not defined (or the wrong old interface from the previous branch work, if present).
 
 - [ ] **Step 3: Create `ContextBuilder.java`**
 
@@ -131,7 +146,13 @@ import java.util.List;
 
 public interface ContextBuilder {
 
-    List<ChatMessage> build(List<ChatMessage> history, String systemPrompt);
+    void start(String systemPrompt);
+
+    void appendUser(String content);
+
+    void appendAssistant(String content);
+
+    List<ChatMessage> messages();
 }
 ```
 
@@ -148,16 +169,29 @@ import java.util.List;
 
 public class FullContextBuilder implements ContextBuilder {
 
+    private final List<ChatMessage> context = new ArrayList<>();
+
     @Override
-    public List<ChatMessage> build(List<ChatMessage> history, String systemPrompt) {
-        List<ChatMessage> context = new ArrayList<>();
+    public void start(String systemPrompt) {
+        context.clear();
         if (systemPrompt != null) {
             context.add(new ChatMessage(Role.SYSTEM, systemPrompt));
         }
-        for (ChatMessage message : history) {
-            context.add(new ChatMessage(message.role(), message.content()));
-        }
-        return context;
+    }
+
+    @Override
+    public void appendUser(String content) {
+        context.add(new ChatMessage(Role.USER, content));
+    }
+
+    @Override
+    public void appendAssistant(String content) {
+        context.add(new ChatMessage(Role.ASSISTANT, content));
+    }
+
+    @Override
+    public List<ChatMessage> messages() {
+        return List.copyOf(context);
     }
 }
 ```
@@ -165,25 +199,20 @@ public class FullContextBuilder implements ContextBuilder {
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `mvn -q test -Dtest=FullContextBuilderTest`
-Expected: PASS — 4 tests, `BUILD SUCCESS`.
+Expected: PASS — 6 tests, `BUILD SUCCESS`.
 
-- [ ] **Step 6: Run the full suite**
-
-Run: `mvn -q test`
-Expected: `BUILD SUCCESS` — all tests green (106 total).
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/main/java/com/mrsmith/chat/ContextBuilder.java src/main/java/com/mrsmith/chat/FullContextBuilder.java src/test/java/com/mrsmith/chat/FullContextBuilderTest.java
-git commit -m "feat: add ContextBuilder port and FullContextBuilder"
+git commit -m "feat: incremental ContextBuilder port and FullContextBuilder"
 ```
 
 ---
 
-### Task 2: Atomic Switchover (ChatSession builds context; Provider serializes verbatim)
+### Task 2: Atomic Switchover (ChatSession feeds the builder; Provider serializes verbatim)
 
-This task is atomic: it moves system-prompt handling out of the provider and into the session's context building, and wires the new 5-arg `ChatSession`.
+This task is atomic: it moves system-prompt handling out of the provider and into the session's builder seeding, and wires the incremental builder into `ChatSession`.
 
 **Files:**
 - Modify: `src/main/java/com/mrsmith/chat/ChatSession.java`
@@ -196,11 +225,13 @@ Follow TDD for the new/modified tests; the whole task lands as one coherent comm
 
 - [ ] **Step 1: Update `ChatSessionTest.java`**
 
-1. `ContextBuilder` and `FullContextBuilder` are in the SAME package as `ChatSessionTest` (`com.mrsmith.chat`) — NO new imports are needed. (`AppConfig` and `Role` imports already exist.)
+`ContextBuilder` and `FullContextBuilder` are in the SAME package as `ChatSessionTest` (`com.mrsmith.chat`) — NO new imports are needed. (`AppConfig` and `Role` imports already exist.)
 
-2. Every `ChatSession` construction gains a 5th argument: declare `ContextBuilder contextBuilder = new FullContextBuilder();` and construct `new ChatSession(provider, io, config(...), transcripts, contextBuilder)`.
+1. Every `ChatSession` construction gains a 5th argument: declare `ContextBuilder contextBuilder = new FullContextBuilder();` and construct `new ChatSession(provider, io, config(...), transcripts, contextBuilder)`.
 
-3. **Rework `storesThinkingInHistory`** — the provider now receives the context (thinking stripped), so the assertion changes. Replace the test:
+2. The existing `receivedHistories` content assertions still hold: with `systemPrompt` null in the test `config()` helper, the builder's context equals the history contents (no thinking). 
+
+3. **`thinkingIsNotSentToProvider`** (renamed from `storesThinkingInHistory`): with a `FakeProvider` that streams thinking `"ponder"`, the provider receives the builder's context, which has no thinking:
 
 ```java
     @Test
@@ -235,7 +266,15 @@ Follow TDD for the new/modified tests; the whole task lands as one coherent comm
     }
 ```
 
-Note: with `systemPrompt` null in the existing `config()` helper, the context the provider receives equals history contents (thinking stripped); the remaining `receivedHistories` content assertions still hold. EXCEPT `interruptedReasoningPreservesPartialThinking`, which asserted `secondTurn.get(1).thinking() == "half"` on the provider-received context — now stripped. Rework its last assertion to verify thinking is preserved in the TRANSCRIPT instead (turn 1's interrupted record has thinking "half", turn 2's successful record has null): `assertEquals(Arrays.asList("half", null), transcripts.assistantThinkings);` (add `import java.util.Arrays;`).
+5. **Rework `interruptedReasoningPreservesPartialThinking`** — its last assertion on the provider-received context is now on the builder's context (thinking stripped). Keep the role assertion and verify the partial thinking is preserved in the TRANSCRIPT instead:
+
+```java
+        assertEquals(Role.ASSISTANT, secondTurn.get(1).role());
+        assertNull(secondTurn.get(1).thinking());
+        assertEquals(Arrays.asList("half", null), transcripts.assistantThinkings);
+```
+
+(Add `import java.util.Arrays;` if needed.)
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -244,15 +283,13 @@ Expected: FAIL — compilation error, 5-arg `ChatSession` constructor not define
 
 - [ ] **Step 3: Modify `src/main/java/com/mrsmith/chat/ChatSession.java`**
 
-Add the import `import com.mrsmith.provider.ChatMessage;` is present. Add a field and constructor arg, and change the `run()` loop to build the context. Specifically:
-
-Add the field (after `transcripts`):
+Add a field (after `transcripts`):
 
 ```java
     private final ContextBuilder contextBuilder;
 ```
 
-Change the constructor:
+Change the constructor to 5 args:
 
 ```java
     public ChatSession(Provider provider, IO io, AppConfig config, TranscriptWriter transcripts,
@@ -265,20 +302,41 @@ Change the constructor:
     }
 ```
 
-Change the `send` line in `run()` from:
+In `run()`, call `contextBuilder.start(config.systemPrompt());` right after the banner (alongside `startNewSession()`), and change the turn flow. Specifically, after the banner line:
 
 ```java
-                ProviderResponse response = provider.send(history, io::write, io::writeReasoning);
+        contextBuilder.start(config.systemPrompt());
 ```
 
-to:
+Change the turn body from:
 
 ```java
-                List<ChatMessage> context = contextBuilder.build(history, config.systemPrompt());
+            history.add(new ChatMessage(Role.USER, line));
+            appendUser(line);
+            try {
                 ProviderResponse response = provider.send(context, io::write, io::writeReasoning);
 ```
 
-(The `history` list still stores user messages and replies unchanged.)
+(removing the previous `List<ChatMessage> context = contextBuilder.build(...)` line) to:
+
+```java
+            history.add(new ChatMessage(Role.USER, line));
+            appendUser(line);
+            contextBuilder.appendUser(line);
+            try {
+                List<ChatMessage> context = contextBuilder.messages();
+                ProviderResponse response = provider.send(context, io::write, io::writeReasoning);
+                history.add(response.message());
+                contextBuilder.appendAssistant(response.message().content());
+                appendAssistant(response.message().content(), response.message().thinking(),
+                        response.usage(), response.usageEstimated());
+```
+
+And in the `ProviderException` partial branch, add `contextBuilder.appendAssistant(e.partialContent());` after the `history.add(...)` line.
+
+In `handleCommand`, the `/reset` branch gains `contextBuilder.start(config.systemPrompt());` (after `history.clear()`).
+
+(`history` still stores user messages and replies unchanged; `java.util.List` is already imported.)
 
 - [ ] **Step 4: Modify `src/main/java/com/mrsmith/provider/OpenAiCompatibleProvider.java`** — replace the ENTIRE file:
 
@@ -454,9 +512,7 @@ public class OpenAiCompatibleProvider implements Provider {
 }
 ```
 
-Note: the system-prompt block was removed from `buildRequestBody`, and `estimateUsage` now iterates the context (the system message, if present, is one of the context messages). Parameter names are `context` throughout.
-
-- [ ] **Step 5: Update `src/main/java/com/mrsmith/cli/ChatCommand.java`**
+- [ ] **Step 5: Modify `src/main/java/com/mrsmith/cli/ChatCommand.java`**
 
 Add the imports:
 
@@ -465,18 +521,16 @@ import com.mrsmith.chat.ContextBuilder;
 import com.mrsmith.chat.FullContextBuilder;
 ```
 
-Replace the session construction block:
+Replace the session construction block (the `TranscriptWriter transcripts = new FileTranscriptWriter(config.sessionsDir());` line stays above it):
 
 ```java
         ContextBuilder contextBuilder = new FullContextBuilder();
         ChatSession session = new ChatSession(provider, io, config, transcripts, contextBuilder);
 ```
 
-(The `TranscriptWriter transcripts = new FileTranscriptWriter(config.sessionsDir());` line stays above it.)
-
 - [ ] **Step 6: Update `src/test/java/com/mrsmith/provider/OpenAiCompatibleProviderTest.java`**
 
-Rework the `includesSystemPromptWhenConfigured` test. The provider no longer injects the system prompt, so the test must pass the system message in the list explicitly. Replace it with:
+Replace the `includesSystemPromptWhenConfigured`/`serializesSystemMessageVerbatim` test with:
 
 ```java
     @Test
@@ -503,13 +557,13 @@ Expected: PASS, `BUILD SUCCESS`.
 - [ ] **Step 8: Run the full suite**
 
 Run: `mvn -q test`
-Expected: `BUILD SUCCESS` — all tests green. (Baseline 106 from Task 1, plus the new `includesSystemMessageInContext` test; the renamed `thinkingIsNotSentToProvider` keeps the same count.)
+Expected: `BUILD SUCCESS` — all tests green.
 
 - [ ] **Step 9: Commit**
 
 ```bash
 git add src/main/java/com/mrsmith/chat/ChatSession.java src/main/java/com/mrsmith/provider/OpenAiCompatibleProvider.java src/main/java/com/mrsmith/cli/ChatCommand.java src/test/java/com/mrsmith/chat/ChatSessionTest.java src/test/java/com/mrsmith/provider/OpenAiCompatibleProviderTest.java
-git commit -m "refactor: derive context from history via ContextBuilder; provider serializes verbatim"
+git commit -m "refactor: feed incremental ContextBuilder; provider serializes verbatim"
 ```
 
 ---
@@ -539,4 +593,4 @@ With your real config at `~/.config/mrsmith/config.json`:
 1. Run the CLI and send a message; confirm the model still follows your system prompt (behavior unchanged).
 2. Confirm thinking still streams in yellow and the transcript still records it.
 3. Confirm the per-turn usage line and `/usage` still work.
-4. Ask a follow-up and confirm the model still has context (multi-turn works) — the context sent is the same as before (system + full history, minus thinking).
+4. Ask a follow-up and confirm the model still has context (multi-turn works).

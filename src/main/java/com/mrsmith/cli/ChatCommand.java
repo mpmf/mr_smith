@@ -1,6 +1,8 @@
 package com.mrsmith.cli;
 
 import com.mrsmith.chat.ChatSession;
+import com.mrsmith.chat.ContextBuilder;
+import com.mrsmith.chat.FullContextBuilder;
 import com.mrsmith.config.AppConfig;
 import com.mrsmith.config.CliConfig;
 import com.mrsmith.config.ConfigException;
@@ -57,7 +59,8 @@ public class ChatCommand implements Callable<Integer> {
         Provider provider = new OpenAiCompatibleProvider(config);
         IO io = new ReplIo();
         TranscriptWriter transcripts = new FileTranscriptWriter(config.sessionsDir());
-        ChatSession session = new ChatSession(provider, io, config, transcripts);
+        ContextBuilder contextBuilder = new FullContextBuilder();
+        ChatSession session = new ChatSession(provider, io, config, transcripts, contextBuilder);
         try {
             session.run();
         } catch (IOException e) {

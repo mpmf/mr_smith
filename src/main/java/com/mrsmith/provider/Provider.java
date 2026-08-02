@@ -5,6 +5,6 @@ import java.util.function.Consumer;
 
 public interface Provider {
 
-    ProviderResponse send(List<ChatMessage> history, Consumer<String> tokenSink,
+    ProviderResponse send(List<ChatMessage> context, Consumer<String> tokenSink,
                           Consumer<String> reasoningSink);
 }

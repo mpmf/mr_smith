@@ -40,10 +40,10 @@ public class OpenAiCompatibleProvider implements Provider {
     }
 
     @Override
-    public ProviderResponse send(List<ChatMessage> history, Consumer<String> tokenSink,
+    public ProviderResponse send(List<ChatMessage> context, Consumer<String> tokenSink,
                                  Consumer<String> reasoningSink) {
         try {
-            return doSend(history, tokenSink, reasoningSink);
+            return doSend(context, tokenSink, reasoningSink);
         } catch (ProviderException e) {
             throw e;
         } catch (IOException | InterruptedException e) {
@@ -53,12 +53,12 @@ public class OpenAiCompatibleProvider implements Provider {
         }
     }
 
-    private ProviderResponse doSend(List<ChatMessage> history, Consumer<String> tokenSink,
+    private ProviderResponse doSend(List<ChatMessage> context, Consumer<String> tokenSink,
                                     Consumer<String> reasoningSink)
             throws IOException, InterruptedException {
-        HttpRequest request = buildRequest(buildRequestBody(history));
+        HttpRequest request = buildRequest(buildRequestBody(context));
         HttpResponse<InputStream> response = sendWithRetry(request);
-        return handleResponse(response, history, tokenSink, reasoningSink);
+        return handleResponse(response, context, tokenSink, reasoningSink);
     }
 
     private HttpResponse<InputStream> sendWithRetry(HttpRequest request)
@@ -78,7 +78,7 @@ public class OpenAiCompatibleProvider implements Provider {
         return response;
     }
 
-    private ProviderResponse handleResponse(HttpResponse<InputStream> response, List<ChatMessage> history,
+    private ProviderResponse handleResponse(HttpResponse<InputStream> response, List<ChatMessage> context,
                                             Consumer<String> tokenSink, Consumer<String> reasoningSink) {
         if (response.statusCode() >= 500) {
             throw new ProviderException("Provider error HTTP " + response.statusCode()
@@ -104,7 +104,7 @@ public class OpenAiCompatibleProvider implements Provider {
             Usage usage = result.usage();
             boolean estimated = false;
             if (usage == null) {
-                usage = estimateUsage(history, result.content(), result.thinking());
+                usage = estimateUsage(context, result.content(), result.thinking());
                 estimated = true;
             }
             return new ProviderResponse(message, usage, estimated);
@@ -117,12 +117,9 @@ public class OpenAiCompatibleProvider implements Provider {
         }
     }
 
-    private Usage estimateUsage(List<ChatMessage> history, String replyContent, String thinking) {
+    private Usage estimateUsage(List<ChatMessage> context, String replyContent, String thinking) {
         int prompt = 0;
-        if (config.systemPrompt() != null) {
-            prompt += TokenEstimator.estimateTokens(config.systemPrompt());
-        }
-        for (ChatMessage message : history) {
+        for (ChatMessage message : context) {
             prompt += TokenEstimator.estimateTokens(message.content());
         }
         int completion = TokenEstimator.estimateTokens(replyContent);
@@ -132,7 +129,7 @@ public class OpenAiCompatibleProvider implements Provider {
         return new Usage(prompt, completion);
     }
 
-    private String buildRequestBody(List<ChatMessage> history) {
+    private String buildRequestBody(List<ChatMessage> context) {
         ObjectNode root = JSON.createObjectNode();
         root.put("model", config.model());
         root.put("stream", true);
@@ -140,12 +137,7 @@ public class OpenAiCompatibleProvider implements Provider {
             root.putObject("stream_options").put("include_usage", true);
         }
         ArrayNode messages = root.putArray("messages");
-        if (config.systemPrompt() != null) {
-            messages.addObject()
-                    .put("role", Role.SYSTEM.apiName())
-                    .put("content", config.systemPrompt());
-        }
-        for (ChatMessage message : history) {
+        for (ChatMessage message : context) {
             String content = message.content() == null ? "" : message.content();
             messages.addObject()
                     .put("role", message.roleName())

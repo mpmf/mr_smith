@@ -1,42 +1,48 @@
 # Mr Smith — History vs Context Separation Design
 
 Date: 2026-08-01
-Status: Approved
+Status: Approved (revised 2026-08-02: ContextBuilder is incremental and stateful)
 
 ## Context
 
 Today `ChatSession` treats its `history` list as both the full conversation
-record and the context sent to the provider. These concepts can diverge: after a
-future compaction, history stays complete while the context is a summarized
-window. The reasoning text is already an exception — it is stored in history
-(`thinking`) but excluded at request serialization.
+record and the context sent to the provider. These concepts can diverge: after
+future compaction, history stays complete while the context is a bounded,
+possibly summarized window. The reasoning text is already an exception — it is
+stored in history (`thinking`) but excluded from the context.
 
-This design separates the two concepts now (before compaction exists) so the
-compaction feature later only changes how the context is derived.
+This design separates the two concepts now (before compaction exists) by making
+the context a **stateful, incrementally-built window** that future strategies
+(sliding window, compaction at a fraction of the context limit, ignoring small
+interactions, replay/resume) can manage differently.
 
 ## Goals
 
 - Introduce a distinct **context** concept: the message list actually sent to
-  the provider, derived from history each turn.
+  the provider, maintained incrementally as interactions happen.
 - Keep **history** as the full conversation record (displayed and written to the
   transcript, including thinking).
-- Make the thinking exclusion explicit at the context boundary rather than an
-  implicit serialization detail.
-- Provide a clean seam (`ContextBuilder`) where compaction can plug in later.
+- Feed the context builder one interaction at a time (user message, assistant
+  reply) and let it keep the context current.
+- Provide a strategy seam so future compaction/windowing changes only how the
+  builder updates its context.
 
 ## Non-goals (this iteration)
 
-- Compaction or summarization (future feature).
-- Windowing or trimming (future feature).
+- Compaction, summarization, windowing, or interaction filtering (future
+  strategies — the interface is the seam).
 - Any change to the transcript format or the displayed conversation.
 
 ## Decisions
 
-- **Context contents:** system prompt (if any) + all history messages with
-  `thinking` stripped.
-- **Where context is built:** a `ContextBuilder` port; for now the
-  `FullContextBuilder` implementation returns the full derivation. A future
-  compactor can be a different implementation or a composition.
+- **Incremental interface:** the `ContextBuilder` is stateful. `start(prompt)`
+  resets it for a session; `appendUser(content)` and `appendAssistant(content)`
+  feed interactions; `messages()` returns the current context.
+- **Default strategy:** full accumulation — every interaction is appended and
+  `messages()` returns everything (system prompt + all turns, no thinking).
+  Behavior is identical to today; the incremental seam is what's new.
+- **Thinking:** never part of the context. `appendAssistant` takes content only;
+  thinking stays in `history` and the transcript.
 - **Provider contract:** the provider serializes exactly the messages it is
   given and estimates usage over them; it no longer injects the system prompt.
 
@@ -46,30 +52,37 @@ New types in `com.mrsmith.chat`:
 
 | Type | Kind | Responsibility |
 |---|---|---|
-| `ContextBuilder` | port (interface) | `List<ChatMessage> build(List<ChatMessage> history, String systemPrompt)` |
-| `FullContextBuilder` | adapter | System message (if `systemPrompt` non-null) + history messages rebuilt as `ChatMessage(role, content)` (thinking dropped) |
+| `ContextBuilder` | port (interface) | `start(String systemPrompt)`, `appendUser(String content)`, `appendAssistant(String content)`, `List<ChatMessage> messages()` |
+| `FullContextBuilder` | adapter | Full-accumulation strategy; `start` clears and seeds the system message; `messages()` returns an immutable snapshot |
 
 Changed types:
 
-- `ChatSession` gains a `ContextBuilder` (5th constructor arg). Each turn it
-  builds the context and passes it to `provider.send(context, io::write,
-  io::writeReasoning)`. `history` still stores the full record (with thinking).
+- `ChatSession` holds a `ContextBuilder` (5th constructor arg). It calls
+  `start(config.systemPrompt())` at session start and on `/reset`; per turn it
+  calls `appendUser(line)`, reads `messages()`, passes the context to
+  `provider.send`, then `appendAssistant(reply.content())` (and
+  `appendAssistant(partialContent)` on an interrupted partial reply). `history`
+  (with thinking) is still kept for the transcript.
 - `OpenAiCompatibleProvider` — `buildRequestBody(List<ChatMessage> context)`
   serializes the given messages verbatim (no system-prompt prepend);
-  `estimateUsage(List<ChatMessage> context, replyContent, thinking)` estimates
-  prompt over the context messages (the system message is one of them).
+  `estimateUsage` estimates prompt over the context messages.
 - `ChatCommand` injects `new FullContextBuilder()`.
 
 ## Data Flow (one turn)
 
 ```
-history.add(USER, line)                    // history keeps everything
-appendUser(line)                           // transcript unchanged
-context = contextBuilder.build(history, config.systemPrompt())
-                                           //   → [system?, ...history without thinking]
-provider.send(context, io::write, io::writeReasoning)
-history.add(response.message())            // history stores thinking
-appendAssistant(...)                       // transcript records thinking
+run(): builder.start(config.systemPrompt())
+loop:
+  /reset → history.clear(); builder.start(systemPrompt); tracker.reset()
+  user message:
+    history.add(USER, line)                // history keeps everything
+    builder.appendUser(line)
+    context = builder.messages()           // immutable snapshot to send
+    provider.send(context, io::write, io::writeReasoning)
+    history.add(response.message())        // history stores thinking
+    builder.appendAssistant(response.message().content())
+  interrupted partial:
+    history.add(partial); builder.appendAssistant(partialContent)
 ```
 
 ## Error Handling
@@ -77,26 +90,27 @@ appendAssistant(...)                       // transcript records thinking
 | Scenario | Behavior |
 |---|---|
 | History message with null content (thinking-only interruption) | Context preserves it; serialization coerces `null` → `""` (existing) |
-| `systemPrompt` null | No system message in the context |
-| Empty history | Context = `[system?]` only |
-| Thinking on any history message | Always stripped from the context |
+| `systemPrompt` null | `start` seeds no system message |
+| `/reset` | `start()` clears the builder's window and re-seeds the system prompt |
+| Transcript failures | Do not affect the builder (context stays correct) |
 | Provider errors / retries | Unchanged (no new error paths) |
 
 ## Testing
 
-- `FullContextBuilderTest` — system + history in order; null system prompt → no
-  system message; thinking stripped everywhere; null content preserved; empty
-  history.
-- `ChatSessionTest` — provider receives the context (system + history, no
-  thinking). `storesThinkingInHistory` is reworked to assert the provider does
-  NOT receive thinking (the transcript test already covers thinking being
-  recorded). A new test asserts a configured system prompt appears as the first
-  message the provider receives.
-- `OpenAiCompatibleProviderTest` — serializes the given messages verbatim; the
-  old `includesSystemPromptWhenConfigured` is reworked to pass the system
-  message explicitly (the provider no longer injects it).
+- `FullContextBuilderTest` — `start` seeds the system message (or none when
+  null); `appendUser`/`appendAssistant` accumulate in order; `messages()`
+  returns all content with no thinking; `messages()` is immutable; `start()`
+  resets the window.
+- `ChatSessionTest` — provider receives `builder.messages()`; the existing
+  `receivedHistories` content assertions still hold (no system prompt in test
+  config); `thinkingIsNotSentToProvider`; `includesSystemMessageInContext`;
+  partial-interruption appends partial content to the context.
+- `OpenAiCompatibleProviderTest` — serializes the given messages verbatim
+  (system message passed explicitly when present).
 
 ## Future Extensions (not now)
 
-- A compactor `ContextBuilder` that summarizes or windows the history.
-- Optionally, a `Context` value type if the derivation grows.
+- New `ContextBuilder` implementations: sliding-window, compaction at a
+  fraction of the configured context limit, ignoring small interactions,
+  replaying/resuming a transcript. Extract a `ContextStrategy` if/when a second
+  strategy appears.

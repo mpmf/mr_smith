@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
@@ -20,6 +21,7 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ChatSessionTest {
@@ -28,8 +30,9 @@ class ChatSessionTest {
     void sendsUserMessageAndStoresReplyInHistory() throws Exception {
         FakeProvider provider = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config(), transcripts);
+        ChatSession session = new ChatSession(provider, io, config(), transcripts, contextBuilder);
         session.run();
         assertEquals(1, provider.receivedHistories.get(0).size());
         assertEquals(Role.USER, provider.receivedHistories.get(0).get(0).role());
@@ -41,8 +44,9 @@ class ChatSessionTest {
     void keepsContextAcrossTurns() throws Exception {
         FakeProvider provider = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("first", "second", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config(), transcripts);
+        ChatSession session = new ChatSession(provider, io, config(), transcripts, contextBuilder);
         session.run();
         assertEquals(2, provider.receivedHistories.size());
         List<ChatMessage> secondTurn = provider.receivedHistories.get(1);
@@ -56,8 +60,9 @@ class ChatSessionTest {
     void resetClearsHistory() throws Exception {
         FakeProvider provider = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("first", "/reset", "second", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config(), transcripts);
+        ChatSession session = new ChatSession(provider, io, config(), transcripts, contextBuilder);
         session.run();
         List<ChatMessage> secondTurn = provider.receivedHistories.get(1);
         assertEquals(1, secondTurn.size());
@@ -68,8 +73,9 @@ class ChatSessionTest {
     void unknownCommandIsNotSentToProvider() throws Exception {
         FakeProvider provider = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("/bogus", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config(), transcripts);
+        ChatSession session = new ChatSession(provider, io, config(), transcripts, contextBuilder);
         session.run();
         assertTrue(provider.receivedHistories.isEmpty());
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("Unknown command")));
@@ -82,8 +88,9 @@ class ChatSessionTest {
         };
         FakeProvider ok = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "again", "/exit"));
-        ChatSession session = new ChatSession(new FirstThenProvider(failing, ok), io, config(), transcripts);
+        ChatSession session = new ChatSession(new FirstThenProvider(failing, ok), io, config(), transcripts, contextBuilder);
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("HTTP 401")));
         assertEquals(1, ok.calls);
@@ -97,8 +104,9 @@ class ChatSessionTest {
         };
         FakeProvider ok = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "again", "/exit"));
-        ChatSession session = new ChatSession(new FirstThenProvider(interrupted, ok), io, config(), transcripts);
+        ChatSession session = new ChatSession(new FirstThenProvider(interrupted, ok), io, config(), transcripts, contextBuilder);
         session.run();
         List<ChatMessage> secondTurn = ok.receivedHistories.get(0);
         assertEquals(3, secondTurn.size());
@@ -113,8 +121,9 @@ class ChatSessionTest {
         };
         FakeProvider ok = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "again", "/exit"));
-        ChatSession session = new ChatSession(new FirstThenProvider(failing, ok), io, config(), transcripts);
+        ChatSession session = new ChatSession(new FirstThenProvider(failing, ok), io, config(), transcripts, contextBuilder);
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("boom")));
         assertEquals(1, ok.calls);
@@ -124,8 +133,9 @@ class ChatSessionTest {
     void printsPerTurnUsageLine() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(1200, 300), false);
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config(), transcripts);
+        ChatSession session = new ChatSession(provider, io, config(), transcripts, contextBuilder);
         session.run();
         assertTrue(io.lines.contains("tokens: 1,200 in · 300 out · total 1,500 · session 1,500"));
     }
@@ -134,8 +144,9 @@ class ChatSessionTest {
     void usageLineFlagsEstimates() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(100, 50), true);
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config(), transcripts);
+        ChatSession session = new ChatSession(provider, io, config(), transcripts, contextBuilder);
         session.run();
         assertTrue(io.lines.contains("tokens: 100 in (est.) · 50 out (est.) · total 150 · session 150 (est.)"));
     }
@@ -144,8 +155,9 @@ class ChatSessionTest {
     void usageCommandPrintsReport() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(1200, 300), false);
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "/usage", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config(), transcripts);
+        ChatSession session = new ChatSession(provider, io, config(), transcripts, contextBuilder);
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("Session usage:")));
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("  total:       1,500")));
@@ -156,8 +168,9 @@ class ChatSessionTest {
     void warnsAtEightyFiveAndHundredPercent() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(900, 0), false);
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "again", "once more", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config(1000), transcripts);
+        ChatSession session = new ChatSession(provider, io, config(1000), transcripts, contextBuilder);
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("session at 90% of your configured 1,000-token context limit")));
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("session reached 100% of your configured 1,000-token context limit")));
@@ -167,8 +180,9 @@ class ChatSessionTest {
     void warnsOncePerThreshold() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(900, 0), false);
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("a", "b", "c", "d", "e", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config(1000), transcripts);
+        ChatSession session = new ChatSession(provider, io, config(1000), transcripts, contextBuilder);
         session.run();
         long warnings = io.lines.stream().filter(l -> l.startsWith("Warning:")).count();
         assertEquals(2, warnings);
@@ -178,8 +192,9 @@ class ChatSessionTest {
     void resetClearsUsageTracker() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(900, 0), false);
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "/reset", "/usage", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config(1000), transcripts);
+        ChatSession session = new ChatSession(provider, io, config(1000), transcripts, contextBuilder);
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("  total:       0")));
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("  history: 0 messages")));
@@ -189,8 +204,9 @@ class ChatSessionTest {
     void usageReportShowsContextLimitWhenConfigured() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(1200, 300), false);
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "/usage", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config(128000), transcripts);
+        ChatSession session = new ChatSession(provider, io, config(128000), transcripts, contextBuilder);
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("  context limit: 128,000 configured (1% used)")));
     }
@@ -199,22 +215,40 @@ class ChatSessionTest {
     void streamsReasoningThroughIo() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(100, 50), true, "ponder");
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config(), transcripts);
+        ChatSession session = new ChatSession(provider, io, config(), transcripts, contextBuilder);
         session.run();
         assertTrue(io.lines.contains("ponder"));
     }
 
     @Test
-    void storesThinkingInHistory() throws Exception {
+    void thinkingIsNotSentToProvider() throws Exception {
         FakeProvider ok = new FakeProvider(new Usage(0, 0), false, "ponder");
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("first", "second", "/exit"));
-        ChatSession session = new ChatSession(ok, io, config(), transcripts);
+        ChatSession session = new ChatSession(ok, io, config(), transcripts, contextBuilder);
         session.run();
         List<ChatMessage> secondTurn = ok.receivedHistories.get(1);
         assertEquals(3, secondTurn.size());
-        assertEquals("ponder", secondTurn.get(1).thinking());
+        assertEquals("first response", secondTurn.get(1).content());
+        assertNull(secondTurn.get(1).thinking());
+    }
+
+    @Test
+    void includesSystemMessageInContext() throws Exception {
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
+        StubIo io = new StubIo(List.of("hello", "/exit"));
+        AppConfig cfg = new AppConfig("sk-test", "https://example.com/v1", "test-model", "You are helpful");
+        ChatSession session = new ChatSession(provider, io, cfg, transcripts, contextBuilder);
+        session.run();
+        List<ChatMessage> context = provider.receivedHistories.get(0);
+        assertEquals(2, context.size());
+        assertEquals(Role.SYSTEM, context.get(0).role());
+        assertEquals("You are helpful", context.get(0).content());
     }
 
     @Test
@@ -225,21 +259,24 @@ class ChatSessionTest {
         };
         FakeProvider ok = new FakeProvider(new Usage(0, 0), false);
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "again", "/exit"));
-        ChatSession session = new ChatSession(new FirstThenProvider(interrupted, ok), io, config(), transcripts);
+        ChatSession session = new ChatSession(new FirstThenProvider(interrupted, ok), io, config(), transcripts, contextBuilder);
         session.run();
         List<ChatMessage> secondTurn = ok.receivedHistories.get(0);
         assertEquals(3, secondTurn.size());
         assertEquals(Role.ASSISTANT, secondTurn.get(1).role());
-        assertEquals("half", secondTurn.get(1).thinking());
+        assertNull(secondTurn.get(1).thinking());
+        assertEquals(Arrays.asList("half", null), transcripts.assistantThinkings);
     }
 
     @Test
     void startsSessionAndPrintsUuid() throws Exception {
         FakeProvider provider = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("/exit"));
-        ChatSession session = new ChatSession(provider, io, config(), transcripts);
+        ChatSession session = new ChatSession(provider, io, config(), transcripts, contextBuilder);
         session.run();
         assertEquals(1, transcripts.starts.size());
         assertTrue(io.lines.stream().anyMatch(l -> l.startsWith("Session: ")));
@@ -249,8 +286,9 @@ class ChatSessionTest {
     void recordsUserAndAssistantTurns() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(1200, 300), false);
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config(), transcripts);
+        ChatSession session = new ChatSession(provider, io, config(), transcripts, contextBuilder);
         session.run();
         assertEquals(List.of("hello"), transcripts.userContents);
         assertEquals(List.of("hello response"), transcripts.assistantContents);
@@ -262,8 +300,9 @@ class ChatSessionTest {
     void recordsThinkingOnAssistantTurn() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(0, 0), false, "ponder");
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config(), transcripts);
+        ChatSession session = new ChatSession(provider, io, config(), transcripts, contextBuilder);
         session.run();
         assertEquals(List.of("ponder"), transcripts.assistantThinkings);
     }
@@ -272,8 +311,9 @@ class ChatSessionTest {
     void resetStartsNewSession() throws Exception {
         FakeProvider provider = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("/reset", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config(), transcripts);
+        ChatSession session = new ChatSession(provider, io, config(), transcripts, contextBuilder);
         session.run();
         assertEquals(2, transcripts.starts.size());
     }
@@ -286,8 +326,9 @@ class ChatSessionTest {
         };
         FakeProvider ok = new FakeProvider(new Usage(0, 0), false);
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "/exit"));
-        ChatSession session = new ChatSession(new FirstThenProvider(interrupted, ok), io, config(), transcripts);
+        ChatSession session = new ChatSession(new FirstThenProvider(interrupted, ok), io, config(), transcripts, contextBuilder);
         session.run();
         assertEquals(List.of("partial"), transcripts.assistantContents);
         assertTrue(transcripts.assistantUsages.get(0) == null);
@@ -297,9 +338,10 @@ class ChatSessionTest {
     void continuesWhenTranscriptStartFails() throws Exception {
         FakeProvider provider = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         transcripts.failStart = true;
         StubIo io = new StubIo(List.of("hello", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config(), transcripts);
+        ChatSession session = new ChatSession(provider, io, config(), transcripts, contextBuilder);
         session.run();
         assertEquals(1, provider.calls);
         assertTrue(transcripts.userContents.isEmpty());
@@ -309,9 +351,10 @@ class ChatSessionTest {
     void continuesWhenTranscriptAppendFails() throws Exception {
         FakeProvider provider = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        ContextBuilder contextBuilder = new FullContextBuilder();
         transcripts.failAppend = true;
         StubIo io = new StubIo(List.of("hello", "again", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config(), transcripts);
+        ChatSession session = new ChatSession(provider, io, config(), transcripts, contextBuilder);
         session.run();
         assertEquals(2, provider.calls);
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("again response")));
