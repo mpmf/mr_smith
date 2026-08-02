@@ -10,7 +10,6 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -20,142 +19,94 @@ class ConfigLoaderTest {
     Path tempDir;
 
     @Test
-    void missingApiKeyFailsFast() {
+    void missingConfigFileThrows() {
         assertThrows(ConfigException.class,
                 () -> ConfigLoader.load(noFile(), CliConfig.empty(), Map.of()));
     }
 
     @Test
-    void defaultsWhenNoFileEnvOrCli() {
-        AppConfig config = ConfigLoader.load(noFile(), CliConfig.empty(), Map.of("OPENAI_API_KEY", "sk-x"));
-        assertEquals("gpt-4o-mini", config.model());
-        assertEquals("https://api.openai.com/v1", config.baseUrl());
-        assertNull(config.systemPrompt());
-        assertNull(config.maxContextTokens());
-        assertTrue(config.includeUsage());
-    }
-
-    @Test
-    void envApiKeyIsAccepted() {
-        AppConfig config = ConfigLoader.load(noFile(), CliConfig.empty(), Map.of("OPENAI_API_KEY", "sk-env"));
-        assertEquals("sk-env", config.apiKey());
-    }
-
-    @Test
-    void fileApiKeyIsUsedWhenEnvAndCliAbsent() throws IOException {
-        Path file = writeConfig("{ \"apiKey\": \"sk-file\" }");
-        AppConfig config = ConfigLoader.load(file, CliConfig.empty(), Map.of());
-        assertEquals("sk-file", config.apiKey());
-    }
-
-    @Test
-    void envOverridesFileApiKey() throws IOException {
-        Path file = writeConfig("{ \"apiKey\": \"sk-file\" }");
-        AppConfig config = ConfigLoader.load(file, CliConfig.empty(), Map.of("OPENAI_API_KEY", "sk-env"));
-        assertEquals("sk-env", config.apiKey());
-    }
-
-    @Test
-    void envOverridesFile() throws IOException {
-        Path file = writeConfig("{ \"model\": \"from-file\", \"baseUrl\": \"https://file.example\", \"systemPrompt\": \"file prompt\" }");
-        AppConfig config = ConfigLoader.load(file, CliConfig.empty(),
-                Map.of("OPENAI_API_KEY", "sk-env", "MRSMITH_MODEL", "from-env"));
-        assertEquals("from-env", config.model());
-        assertEquals("https://file.example", config.baseUrl());
-        assertEquals("file prompt", config.systemPrompt());
-    }
-
-    @Test
-    void cliOverridesEnv() throws IOException {
-        Path file = writeConfig("{ \"model\": \"from-file\" }");
-        CliConfig cli = new CliConfig("sk-cli", null, "from-cli", null, null, null);
-        AppConfig config = ConfigLoader.load(file, cli,
-                Map.of("OPENAI_API_KEY", "sk-env", "MRSMITH_MODEL", "from-env"));
-        assertEquals("from-cli", config.model());
-        assertEquals("sk-cli", config.apiKey());
-    }
-
-    @Test
-    void malformedFileFallsBackToDefaults() throws IOException {
+    void malformedConfigFileThrows() throws IOException {
         Path file = writeConfig("not valid json {{{");
-        AppConfig config = ConfigLoader.load(file, CliConfig.empty(), Map.of("OPENAI_API_KEY", "sk-x"));
-        assertEquals("gpt-4o-mini", config.model());
+        assertThrows(ConfigException.class,
+                () -> ConfigLoader.load(file, CliConfig.empty(), Map.of()));
+    }
+
+    @Test
+    void oldFormatWithoutAgentsThrows() throws IOException {
+        Path file = writeConfig("{ \"model\": \"gpt-4o-mini\", \"baseUrl\": \"https://api.openai.com/v1\" }");
+        assertThrows(ConfigException.class,
+                () -> ConfigLoader.load(file, CliConfig.empty(), Map.of()));
+    }
+
+    @Test
+    void loadsProvidersAgentsAndGlobals() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [
+                    { "name": "opencode", "apiKey": "sk-x", "baseUrl": "https://opencode.ai/zen/go/v1" }
+                  ],
+                  "agents": [
+                    { "name": "coder", "provider": "opencode", "model": "model-x", "systemPrompt": "be helpful", "maxContextTokens": 128000 }
+                  ],
+                  "defaultAgent": "coder",
+                  "includeUsage": false,
+                  "sessionsDir": "/tmp/my-sessions"
+                }
+                """);
+        AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
+        assertEquals("coder", catalog.defaultName());
+        assertEquals(Path.of("/tmp/my-sessions"), catalog.sessionsDir());
+        AppConfig config = catalog.resolve("coder");
         assertEquals("sk-x", config.apiKey());
-    }
-
-    @Test
-    void baseUrlTrailingSlashIsStripped() throws IOException {
-        Path file = writeConfig("{ \"baseUrl\": \"https://example.com/v1/\" }");
-        AppConfig config = ConfigLoader.load(file, CliConfig.empty(), Map.of("OPENAI_API_KEY", "sk-x"));
-        assertEquals("https://example.com/v1", config.baseUrl());
-    }
-
-    @Test
-    void maxContextAndIncludeUsageReadFromFile() throws IOException {
-        Path file = writeConfig("{ \"maxContextTokens\": 128000, \"includeUsage\": false }");
-        AppConfig config = ConfigLoader.load(file, CliConfig.empty(), Map.of("OPENAI_API_KEY", "sk-x"));
+        assertEquals("https://opencode.ai/zen/go/v1", config.baseUrl());
+        assertEquals("model-x", config.model());
+        assertEquals("be helpful", config.systemPrompt());
         assertEquals(128000, config.maxContextTokens());
         assertFalse(config.includeUsage());
     }
 
     @Test
-    void cliOverridesFileForMaxContextAndIncludeUsage() throws IOException {
-        Path file = writeConfig("{ \"maxContextTokens\": 128000, \"includeUsage\": false }");
-        CliConfig cli = new CliConfig(null, null, null, null, 8192, true);
-        AppConfig config = ConfigLoader.load(file, cli, Map.of("OPENAI_API_KEY", "sk-x"));
-        assertEquals(8192, config.maxContextTokens());
-        assertTrue(config.includeUsage());
-    }
-
-    @Test
-    void envProvidesMaxContextAndIncludeUsage() throws IOException {
-        AppConfig config = ConfigLoader.load(noFile(), CliConfig.empty(),
-                Map.of("OPENAI_API_KEY", "sk-x", "MRSMITH_MAX_CONTEXT", "8192", "MRSMITH_INCLUDE_USAGE", "false"));
-        assertEquals(8192, config.maxContextTokens());
-        assertFalse(config.includeUsage());
-    }
-
-    @Test
-    void invalidEnvMaxContextIsIgnored() throws IOException {
-        AppConfig config = ConfigLoader.load(noFile(), CliConfig.empty(),
-                Map.of("OPENAI_API_KEY", "sk-x", "MRSMITH_MAX_CONTEXT", "abc"));
-        assertNull(config.maxContextTokens());
-    }
-
-    @Test
-    void invalidEnvIncludeUsageIsIgnored() throws IOException {
-        AppConfig config = ConfigLoader.load(noFile(), CliConfig.empty(),
-                Map.of("OPENAI_API_KEY", "sk-x", "MRSMITH_INCLUDE_USAGE", "treu"));
-        assertTrue(config.includeUsage());
-    }
-
-    @Test
-    void sessionsDirDefaultsToConfigHome() throws IOException {
-        AppConfig config = ConfigLoader.load(noFile(), CliConfig.empty(), Map.of("OPENAI_API_KEY", "sk-x"));
+    void defaultsIncludeUsageTrueAndSessionsDirConfigHome() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "p", "apiKey": "sk-x", "baseUrl": "https://example.com/v1" } ],
+                  "agents": [ { "name": "a", "provider": "p", "model": "m" } ],
+                  "defaultAgent": "a"
+                }
+                """);
+        AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
+        assertTrue(catalog.resolve("a").includeUsage());
         assertEquals(Path.of(System.getProperty("user.home"), ".config", "mrsmith", "sessions"),
-                config.sessionsDir());
-    }
-
-    @Test
-    void sessionsDirReadFromFile() throws IOException {
-        Path file = writeConfig("{ \"sessionsDir\": \"/tmp/my-sessions\" }");
-        AppConfig config = ConfigLoader.load(file, CliConfig.empty(), Map.of("OPENAI_API_KEY", "sk-x"));
-        assertEquals(Path.of("/tmp/my-sessions"), config.sessionsDir());
+                catalog.sessionsDir());
     }
 
     @Test
     void sessionsDirFromEnv() throws IOException {
-        AppConfig config = ConfigLoader.load(noFile(), CliConfig.empty(),
-                Map.of("OPENAI_API_KEY", "sk-x", "MRSMITH_SESSIONS_DIR", "/tmp/env-sessions"));
-        assertEquals(Path.of("/tmp/env-sessions"), config.sessionsDir());
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "p", "apiKey": "sk-x", "baseUrl": "https://example.com/v1" } ],
+                  "agents": [ { "name": "a", "provider": "p", "model": "m" } ],
+                  "defaultAgent": "a"
+                }
+                """);
+        AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(),
+                Map.of("MRSMITH_SESSIONS_DIR", "/tmp/env-sessions"));
+        assertEquals(Path.of("/tmp/env-sessions"), catalog.sessionsDir());
     }
 
     @Test
-    void cliOverridesSessionsDir() throws IOException {
-        Path file = writeConfig("{ \"sessionsDir\": \"/tmp/file-sessions\" }");
-        CliConfig cli = new CliConfig(null, null, null, null, null, null, Path.of("/tmp/cli-sessions"));
-        AppConfig config = ConfigLoader.load(file, cli, Map.of("OPENAI_API_KEY", "sk-x"));
-        assertEquals(Path.of("/tmp/cli-sessions"), config.sessionsDir());
+    void sessionsDirFromCliOverrides() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "p", "apiKey": "sk-x", "baseUrl": "https://example.com/v1" } ],
+                  "agents": [ { "name": "a", "provider": "p", "model": "m" } ],
+                  "defaultAgent": "a",
+                  "sessionsDir": "/tmp/file-sessions"
+                }
+                """);
+        AgentCatalog catalog = ConfigLoader.load(file,
+                new CliConfig(null, Path.of("/tmp/cli-sessions")), Map.of());
+        assertEquals(Path.of("/tmp/cli-sessions"), catalog.sessionsDir());
     }
 
     private Path noFile() {

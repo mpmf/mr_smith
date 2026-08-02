@@ -3,10 +3,11 @@ package com.mrsmith.cli;
 import com.mrsmith.chat.ChatSession;
 import com.mrsmith.chat.ContextBuilder;
 import com.mrsmith.chat.FullContextBuilder;
+import com.mrsmith.config.AgentCatalog;
 import com.mrsmith.config.AppConfig;
-import com.mrsmith.config.CliConfig;
 import com.mrsmith.config.ConfigException;
 import com.mrsmith.config.ConfigLoader;
+import com.mrsmith.config.CliConfig;
 import com.mrsmith.io.IO;
 import com.mrsmith.io.ReplIo;
 import com.mrsmith.provider.OpenAiCompatibleProvider;
@@ -24,43 +25,28 @@ import java.util.concurrent.Callable;
         description = "Interactive chat against any OpenAI-compatible endpoint.")
 public class ChatCommand implements Callable<Integer> {
 
-    @Option(names = "--model", description = "Model to use (overrides config file and env).")
-    private String model;
-
-    @Option(names = "--base-url", description = "Provider base URL, e.g. https://api.openai.com/v1")
-    private String baseUrl;
-
-    @Option(names = "--system-prompt", description = "Optional system prompt.")
-    private String systemPrompt;
-
-    @Option(names = "--api-key", description = "API key (overrides OPENAI_API_KEY).")
-    private String apiKey;
-
-    @Option(names = "--max-context", description = "Context window token limit (overrides config file and env).")
-    private Integer maxContext;
-
-    @Option(names = "--include-usage", description = "Request usage stats from the provider (default true).")
-    private Boolean includeUsage;
+    @Option(names = "--agent", description = "Agent to use (overrides the default agent).")
+    private String agent;
 
     @Option(names = "--sessions-dir", description = "Directory where session transcripts are stored (overrides config file and env).")
     private Path sessionsDir;
 
     @Override
     public Integer call() {
-        AppConfig config;
+        AgentCatalog catalog;
         try {
-            config = ConfigLoader.load(
-                    new CliConfig(apiKey, baseUrl, model, systemPrompt, maxContext, includeUsage, sessionsDir));
+            catalog = ConfigLoader.load(new CliConfig(agent, sessionsDir));
         } catch (ConfigException e) {
             System.err.println(e.getMessage());
             return 1;
         }
 
-        Provider provider = new OpenAiCompatibleProvider(config);
+        String initialAgent = agent != null ? agent : catalog.defaultName();
+        AppConfig config = catalog.resolve(initialAgent);
         IO io = new ReplIo();
-        TranscriptWriter transcripts = new FileTranscriptWriter(config.sessionsDir());
+        TranscriptWriter transcripts = new FileTranscriptWriter(catalog.sessionsDir());
         ContextBuilder contextBuilder = new FullContextBuilder();
-        ChatSession session = new ChatSession(provider, io, config, transcripts, contextBuilder);
+        ChatSession session = new ChatSession(provider(config), io, config, transcripts, contextBuilder);
         try {
             session.run();
         } catch (IOException e) {
@@ -68,5 +54,9 @@ public class ChatCommand implements Callable<Integer> {
             return 1;
         }
         return 0;
+    }
+
+    private static Provider provider(AppConfig config) {
+        return new OpenAiCompatibleProvider(config);
     }
 }

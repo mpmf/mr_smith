@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 public final class ConfigLoader {
@@ -18,72 +20,64 @@ public final class ConfigLoader {
     private ConfigLoader() {
     }
 
-    public static AppConfig load(CliConfig cli) {
+    public static AgentCatalog load(CliConfig cli) {
         return load(DEFAULT_CONFIG_PATH, cli, System.getenv());
     }
 
-    public static AppConfig load(Path configFile, CliConfig cli, Map<String, String> env) {
-        String fileModel = null;
-        String fileBaseUrl = null;
-        String fileSystemPrompt = null;
-        String fileApiKey = null;
-        Integer fileMaxContext = null;
-        Boolean fileIncludeUsage = null;
-        String fileSessionsDir = null;
+    public static AgentCatalog load(Path configFile, CliConfig cli, Map<String, String> env) {
+        if (!Files.exists(configFile)) {
+            throw new ConfigException("No config file at " + configFile
+                    + ". Create one defining providers and agents.");
+        }
+        JsonNode root;
+        try {
+            root = JSON.readTree(configFile.toFile());
+        } catch (IOException e) {
+            throw new ConfigException("Could not read config file " + configFile + ": " + e.getMessage());
+        }
 
-        if (Files.exists(configFile)) {
-            try {
-                JsonNode root = JSON.readTree(configFile.toFile());
-                if (root.hasNonNull("model")) {
-                    fileModel = root.get("model").asText();
-                }
-                if (root.hasNonNull("baseUrl")) {
-                    fileBaseUrl = root.get("baseUrl").asText();
-                }
-                if (root.hasNonNull("systemPrompt")) {
-                    fileSystemPrompt = root.get("systemPrompt").asText();
-                }
-                if (root.hasNonNull("apiKey")) {
-                    fileApiKey = root.get("apiKey").asText();
-                }
-                if (root.hasNonNull("maxContextTokens")) {
-                    fileMaxContext = root.get("maxContextTokens").asInt();
-                }
-                if (root.hasNonNull("includeUsage")) {
-                    fileIncludeUsage = root.get("includeUsage").asBoolean();
-                }
-                if (root.hasNonNull("sessionsDir")) {
-                    fileSessionsDir = root.get("sessionsDir").asText();
-                }
-            } catch (IOException e) {
-                System.err.println("Warning: could not read config file " + configFile
-                        + " (" + e.getMessage() + "). Falling back to env vars and defaults.");
+        List<ProviderConfig> providers = parseProviders(root);
+        List<AgentConfig> agents = parseAgents(root);
+        String defaultAgent = root.hasNonNull("defaultAgent") ? root.get("defaultAgent").asText() : null;
+        boolean includeUsage = !root.hasNonNull("includeUsage") || root.get("includeUsage").asBoolean();
+
+        String sessionsDir = firstNonNull(
+                cli.sessionsDir() == null ? null : cli.sessionsDir().toString(),
+                env.get("MRSMITH_SESSIONS_DIR"),
+                root.hasNonNull("sessionsDir") ? root.get("sessionsDir").asText() : null,
+                Path.of(System.getProperty("user.home"), ".config", "mrsmith", "sessions").toString());
+
+        return new AgentCatalog(providers, agents, defaultAgent, includeUsage, Path.of(sessionsDir));
+    }
+
+    private static List<ProviderConfig> parseProviders(JsonNode root) {
+        List<ProviderConfig> result = new ArrayList<>();
+        JsonNode arr = root.path("providers");
+        if (arr.isArray()) {
+            for (JsonNode node : arr) {
+                result.add(new ProviderConfig(
+                        node.path("name").asText(),
+                        node.path("apiKey").asText(null),
+                        node.path("baseUrl").asText()));
             }
         }
+        return result;
+    }
 
-        String model = firstNonNull(cli.model(), env.get("MRSMITH_MODEL"), fileModel, "gpt-4o-mini");
-        String baseUrl = firstNonNull(cli.baseUrl(), env.get("MRSMITH_BASE_URL"), fileBaseUrl,
-                "https://api.openai.com/v1");
-        String systemPrompt = firstNonNull(cli.systemPrompt(), fileSystemPrompt);
-        String apiKey = firstNonNull(cli.apiKey(), env.get("OPENAI_API_KEY"), fileApiKey);
-
-        Integer maxContext = firstNonNullValue(cli.maxContextTokens(),
-                parseEnvInt(env.get("MRSMITH_MAX_CONTEXT")), fileMaxContext);
-        Boolean includeUsage = firstNonNullValue(cli.includeUsage(),
-                parseEnvBool(env.get("MRSMITH_INCLUDE_USAGE")), fileIncludeUsage);
-
-        Path sessionsDir = Path.of(firstNonNull(cli.sessionsDir() == null ? null : cli.sessionsDir().toString(),
-                env.get("MRSMITH_SESSIONS_DIR"), fileSessionsDir,
-                Path.of(System.getProperty("user.home"), ".config", "mrsmith", "sessions").toString()));
-
-        if (apiKey == null) {
-            throw new ConfigException(
-                    "OPENAI_API_KEY is not set. Export it as an environment variable "
-                            + "(e.g. export OPENAI_API_KEY=sk-...) or pass it with --api-key.");
+    private static List<AgentConfig> parseAgents(JsonNode root) {
+        List<AgentConfig> result = new ArrayList<>();
+        JsonNode arr = root.path("agents");
+        if (arr.isArray()) {
+            for (JsonNode node : arr) {
+                result.add(new AgentConfig(
+                        node.path("name").asText(),
+                        node.path("provider").asText(),
+                        node.path("model").asText(),
+                        node.path("systemPrompt").asText(null),
+                        node.hasNonNull("maxContextTokens") ? node.get("maxContextTokens").asInt() : null));
+            }
         }
-
-        return new AppConfig(apiKey, baseUrl, model, systemPrompt,
-                maxContext, includeUsage == null || includeUsage, sessionsDir);
+        return result;
     }
 
     private static String firstNonNull(String... values) {
@@ -91,39 +85,6 @@ public final class ConfigLoader {
             if (value != null && !value.isBlank()) {
                 return value;
             }
-        }
-        return null;
-    }
-
-    private static <T> T firstNonNullValue(T... values) {
-        for (T value : values) {
-            if (value != null) {
-                return value;
-            }
-        }
-        return null;
-    }
-
-    private static Integer parseEnvInt(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-    private static Boolean parseEnvBool(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        if (value.equalsIgnoreCase("true")) {
-            return Boolean.TRUE;
-        }
-        if (value.equalsIgnoreCase("false")) {
-            return Boolean.FALSE;
         }
         return null;
     }

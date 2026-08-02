@@ -7,6 +7,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ChatCommandTest {
@@ -19,8 +20,9 @@ class ChatCommandTest {
         try {
             int exit = new CommandLine(new ChatCommand()).execute("--help");
             assertEquals(0, exit);
-            assertTrue(out.toString().contains("--model"));
+            assertTrue(out.toString().contains("--agent"));
             assertTrue(out.toString().contains("--sessions-dir"));
+            assertFalse(out.toString().contains("--model"));
         } finally {
             System.setOut(original);
         }
