@@ -698,8 +698,10 @@ public class ChatSession {
             transcripts.start(id);
             currentSessionId = id;
         } catch (IOException e) {
-            System.err.println("Warning: could not create session folder: " + e.getMessage());
             currentSessionId = null;
+            System.err.println("Warning: could not create session folder for " + id
+                    + ": " + e.getMessage() + ". Session transcript disabled.");
+            return;
         }
         io.writeLine("Session: " + id);
     }
