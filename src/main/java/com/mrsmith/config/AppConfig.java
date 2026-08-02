@@ -1,9 +1,10 @@
 package com.mrsmith.config;
 
+import java.nio.file.Path;
 import java.util.Objects;
 
 public record AppConfig(String apiKey, String baseUrl, String model, String systemPrompt,
-                        Integer maxContextTokens, boolean includeUsage) {
+                        Integer maxContextTokens, boolean includeUsage, Path sessionsDir) {
 
     public AppConfig {
         Objects.requireNonNull(apiKey, "apiKey is required");
@@ -15,6 +16,11 @@ public record AppConfig(String apiKey, String baseUrl, String model, String syst
     }
 
     public AppConfig(String apiKey, String baseUrl, String model, String systemPrompt) {
-        this(apiKey, baseUrl, model, systemPrompt, null, true);
+        this(apiKey, baseUrl, model, systemPrompt, null, true, null);
+    }
+
+    public AppConfig(String apiKey, String baseUrl, String model, String systemPrompt,
+                     Integer maxContextTokens, boolean includeUsage) {
+        this(apiKey, baseUrl, model, systemPrompt, maxContextTokens, includeUsage, null);
     }
 }
