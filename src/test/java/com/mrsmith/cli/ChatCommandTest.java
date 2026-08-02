@@ -20,6 +20,7 @@ class ChatCommandTest {
             int exit = new CommandLine(new ChatCommand()).execute("--help");
             assertEquals(0, exit);
             assertTrue(out.toString().contains("--model"));
+            assertTrue(out.toString().contains("--sessions-dir"));
         } finally {
             System.setOut(original);
         }

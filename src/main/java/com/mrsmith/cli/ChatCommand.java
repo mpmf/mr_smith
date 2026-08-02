@@ -15,6 +15,7 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.concurrent.Callable;
 
 @Command(name = "mrsmith", mixinStandardHelpOptions = true,
@@ -39,12 +40,15 @@ public class ChatCommand implements Callable<Integer> {
     @Option(names = "--include-usage", description = "Request usage stats from the provider (default true).")
     private Boolean includeUsage;
 
+    @Option(names = "--sessions-dir", description = "Directory where session transcripts are stored (overrides config file and env).")
+    private Path sessionsDir;
+
     @Override
     public Integer call() {
         AppConfig config;
         try {
             config = ConfigLoader.load(
-                    new CliConfig(apiKey, baseUrl, model, systemPrompt, maxContext, includeUsage));
+                    new CliConfig(apiKey, baseUrl, model, systemPrompt, maxContext, includeUsage, sessionsDir));
         } catch (ConfigException e) {
             System.err.println(e.getMessage());
             return 1;
