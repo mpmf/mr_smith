@@ -4,14 +4,12 @@ import com.mrsmith.chat.ChatSession;
 import com.mrsmith.chat.ContextBuilder;
 import com.mrsmith.chat.FullContextBuilder;
 import com.mrsmith.config.AgentCatalog;
-import com.mrsmith.config.AppConfig;
 import com.mrsmith.config.ConfigException;
 import com.mrsmith.config.ConfigLoader;
 import com.mrsmith.config.CliConfig;
 import com.mrsmith.io.IO;
 import com.mrsmith.io.ReplIo;
 import com.mrsmith.provider.OpenAiCompatibleProvider;
-import com.mrsmith.provider.Provider;
 import com.mrsmith.session.FileTranscriptWriter;
 import com.mrsmith.session.TranscriptWriter;
 import picocli.CommandLine.Command;
@@ -42,11 +40,11 @@ public class ChatCommand implements Callable<Integer> {
         }
 
         String initialAgent = agent != null ? agent : catalog.defaultName();
-        AppConfig config = catalog.resolve(initialAgent);
         IO io = new ReplIo();
         TranscriptWriter transcripts = new FileTranscriptWriter(catalog.sessionsDir());
         ContextBuilder contextBuilder = new FullContextBuilder();
-        ChatSession session = new ChatSession(provider(config), io, config, transcripts, contextBuilder);
+        ChatSession session = new ChatSession(io, transcripts, contextBuilder, catalog,
+                OpenAiCompatibleProvider::new, initialAgent);
         try {
             session.run();
         } catch (IOException e) {
@@ -54,9 +52,5 @@ public class ChatCommand implements Callable<Integer> {
             return 1;
         }
         return 0;
-    }
-
-    private static Provider provider(AppConfig config) {
-        return new OpenAiCompatibleProvider(config);
     }
 }

@@ -1,10 +1,12 @@
 package com.mrsmith.chat;
 
+import com.mrsmith.config.AgentCatalog;
 import com.mrsmith.config.AppConfig;
 import com.mrsmith.io.IO;
 import com.mrsmith.provider.ChatMessage;
 import com.mrsmith.provider.Provider;
 import com.mrsmith.provider.ProviderException;
+import com.mrsmith.provider.ProviderFactory;
 import com.mrsmith.provider.ProviderResponse;
 import com.mrsmith.provider.Role;
 import com.mrsmith.provider.Usage;
@@ -21,30 +23,38 @@ public class ChatSession {
     private static final int WARN_THRESHOLD_PERCENT = 85;
     private static final int LIMIT_PERCENT = 100;
 
-    private final Provider provider;
     private final IO io;
-    private final AppConfig config;
     private final TranscriptWriter transcripts;
     private final ContextBuilder contextBuilder;
+    private final AgentCatalog agents;
+    private final ProviderFactory providerFactory;
+    private final String initialAgentName;
+
     private final List<ChatMessage> history = new ArrayList<>();
     private final UsageTracker tracker = new UsageTracker();
     private boolean warned85;
     private boolean warned100;
     private UUID currentSessionId;
+    private String currentAgentName;
+    private AppConfig config;
+    private Provider provider;
 
-    public ChatSession(Provider provider, IO io, AppConfig config, TranscriptWriter transcripts,
-                       ContextBuilder contextBuilder) {
-        this.provider = provider;
+    public ChatSession(IO io, TranscriptWriter transcripts, ContextBuilder contextBuilder,
+                       AgentCatalog agents, ProviderFactory providerFactory, String initialAgentName) {
         this.io = io;
-        this.config = config;
         this.transcripts = transcripts;
         this.contextBuilder = contextBuilder;
+        this.agents = agents;
+        this.providerFactory = providerFactory;
+        this.initialAgentName = initialAgentName;
     }
 
     public void run() throws IOException {
         io.writeLine("Mr Smith. Type /help for commands, /exit to quit.");
-        contextBuilder.start(config.systemPrompt());
-        startNewSession();
+        currentAgentName = initialAgentName;
+        applyAgent();
+        startFreshSession();
+        io.writeLine("Agent: " + currentAgentName);
         String line;
         while ((line = io.readLine()) != null) {
             if (line.equals("/exit")) {
@@ -85,6 +95,20 @@ public class ChatSession {
         }
     }
 
+    private void applyAgent() {
+        config = agents.resolve(currentAgentName);
+        provider = providerFactory.create(config);
+    }
+
+    private void startFreshSession() {
+        history.clear();
+        tracker.reset();
+        warned85 = false;
+        warned100 = false;
+        contextBuilder.start(config.systemPrompt());
+        startNewSession();
+    }
+
     private void startNewSession() {
         UUID id = UUID.randomUUID();
         try {
@@ -97,6 +121,17 @@ public class ChatSession {
             return;
         }
         io.writeLine("Session: " + id);
+    }
+
+    private void switchAgent(String name) {
+        if (!agents.agentNames().contains(name)) {
+            io.writeLine("Unknown agent: " + name);
+            return;
+        }
+        currentAgentName = name;
+        applyAgent();
+        startFreshSession();
+        io.writeLine("Agent: " + name);
     }
 
     private void appendUser(String content) {
@@ -158,18 +193,15 @@ public class ChatSession {
         if (!line.startsWith("/")) {
             return false;
         }
+        if (line.startsWith("/agent ")) {
+            switchAgent(line.substring("/agent ".length()).trim());
+            return true;
+        }
         switch (line) {
-            case "/reset" -> {
-                history.clear();
-                contextBuilder.start(config.systemPrompt());
-                tracker.reset();
-                warned85 = false;
-                warned100 = false;
-                startNewSession();
-                io.writeLine("History cleared.");
-            }
+            case "/reset" -> startFreshSession();
+            case "/agents" -> io.writeLine("Agents: " + String.join(", ", agents.agentNames()));
             case "/usage" -> io.writeLine(usageReport());
-            case "/help" -> io.writeLine("Commands: /exit, /reset, /help, /usage. Anything else is sent to the LLM.");
+            case "/help" -> io.writeLine("Commands: /exit, /reset, /help, /usage, /agents, /agent <name>. Anything else is sent to the LLM.");
             default -> io.writeLine("Unknown command: " + line + " (type /help)");
         }
         return true;
