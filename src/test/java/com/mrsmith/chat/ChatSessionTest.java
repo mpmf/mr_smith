@@ -315,6 +315,7 @@ class ChatSessionTest {
         session.run();
         assertEquals(2, provider.calls);
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("again response")));
+        assertEquals(1, transcripts.appendAttempts);
     }
 
     private AppConfig config() {
@@ -420,6 +421,7 @@ class ChatSessionTest {
         final List<Boolean> assistantEstimated = new ArrayList<>();
         boolean failStart;
         boolean failAppend;
+        int appendAttempts;
 
         @Override
         public void start(UUID sessionId) throws IOException {
@@ -431,6 +433,7 @@ class ChatSessionTest {
 
         @Override
         public void appendUser(UUID sessionId, String content) throws IOException {
+            appendAttempts++;
             if (failAppend) {
                 throw new IOException("boom");
             }
@@ -440,6 +443,7 @@ class ChatSessionTest {
         @Override
         public void appendAssistant(UUID sessionId, String content, String thinking,
                                     Usage usage, boolean estimated) throws IOException {
+            appendAttempts++;
             if (failAppend) {
                 throw new IOException("boom");
             }
