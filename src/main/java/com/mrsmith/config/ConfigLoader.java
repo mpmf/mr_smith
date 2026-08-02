@@ -29,6 +29,7 @@ public final class ConfigLoader {
         String fileApiKey = null;
         Integer fileMaxContext = null;
         Boolean fileIncludeUsage = null;
+        String fileSessionsDir = null;
 
         if (Files.exists(configFile)) {
             try {
@@ -51,6 +52,9 @@ public final class ConfigLoader {
                 if (root.hasNonNull("includeUsage")) {
                     fileIncludeUsage = root.get("includeUsage").asBoolean();
                 }
+                if (root.hasNonNull("sessionsDir")) {
+                    fileSessionsDir = root.get("sessionsDir").asText();
+                }
             } catch (IOException e) {
                 System.err.println("Warning: could not read config file " + configFile
                         + " (" + e.getMessage() + "). Falling back to env vars and defaults.");
@@ -68,6 +72,10 @@ public final class ConfigLoader {
         Boolean includeUsage = firstNonNullValue(cli.includeUsage(),
                 parseEnvBool(env.get("MRSMITH_INCLUDE_USAGE")), fileIncludeUsage);
 
+        Path sessionsDir = Path.of(firstNonNull(cli.sessionsDir() == null ? null : cli.sessionsDir().toString(),
+                env.get("MRSMITH_SESSIONS_DIR"), fileSessionsDir,
+                Path.of(System.getProperty("user.home"), ".config", "mrsmith", "sessions").toString()));
+
         if (apiKey == null) {
             throw new ConfigException(
                     "OPENAI_API_KEY is not set. Export it as an environment variable "
@@ -75,7 +83,7 @@ public final class ConfigLoader {
         }
 
         return new AppConfig(apiKey, baseUrl, model, systemPrompt,
-                maxContext, includeUsage == null || includeUsage);
+                maxContext, includeUsage == null || includeUsage, sessionsDir);
     }
 
     private static String firstNonNull(String... values) {

@@ -129,6 +129,35 @@ class ConfigLoaderTest {
         assertTrue(config.includeUsage());
     }
 
+    @Test
+    void sessionsDirDefaultsToConfigHome() throws IOException {
+        AppConfig config = ConfigLoader.load(noFile(), CliConfig.empty(), Map.of("OPENAI_API_KEY", "sk-x"));
+        assertEquals(Path.of(System.getProperty("user.home"), ".config", "mrsmith", "sessions"),
+                config.sessionsDir());
+    }
+
+    @Test
+    void sessionsDirReadFromFile() throws IOException {
+        Path file = writeConfig("{ \"sessionsDir\": \"/tmp/my-sessions\" }");
+        AppConfig config = ConfigLoader.load(file, CliConfig.empty(), Map.of("OPENAI_API_KEY", "sk-x"));
+        assertEquals(Path.of("/tmp/my-sessions"), config.sessionsDir());
+    }
+
+    @Test
+    void sessionsDirFromEnv() throws IOException {
+        AppConfig config = ConfigLoader.load(noFile(), CliConfig.empty(),
+                Map.of("OPENAI_API_KEY", "sk-x", "MRSMITH_SESSIONS_DIR", "/tmp/env-sessions"));
+        assertEquals(Path.of("/tmp/env-sessions"), config.sessionsDir());
+    }
+
+    @Test
+    void cliOverridesSessionsDir() throws IOException {
+        Path file = writeConfig("{ \"sessionsDir\": \"/tmp/file-sessions\" }");
+        CliConfig cli = new CliConfig(null, null, null, null, null, null, Path.of("/tmp/cli-sessions"));
+        AppConfig config = ConfigLoader.load(file, cli, Map.of("OPENAI_API_KEY", "sk-x"));
+        assertEquals(Path.of("/tmp/cli-sessions"), config.sessionsDir());
+    }
+
     private Path noFile() {
         return tempDir.resolve("missing.json");
     }
