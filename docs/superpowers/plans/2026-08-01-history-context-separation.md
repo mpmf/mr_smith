@@ -235,7 +235,7 @@ Follow TDD for the new/modified tests; the whole task lands as one coherent comm
     }
 ```
 
-Note: with `systemPrompt` null in the existing `config()` helper, the context the provider receives equals history contents (thinking stripped), so all other existing `receivedHistories` assertions still hold.
+Note: with `systemPrompt` null in the existing `config()` helper, the context the provider receives equals history contents (thinking stripped); the remaining `receivedHistories` content assertions still hold. EXCEPT `interruptedReasoningPreservesPartialThinking`, which asserted `secondTurn.get(1).thinking() == "half"` on the provider-received context — now stripped. Rework its last assertion to verify thinking is preserved in the TRANSCRIPT instead (turn 1's interrupted record has thinking "half", turn 2's successful record has null): `assertEquals(Arrays.asList("half", null), transcripts.assistantThinkings);` (add `import java.util.Arrays;`).
 
 - [ ] **Step 2: Run test to verify it fails**
 
