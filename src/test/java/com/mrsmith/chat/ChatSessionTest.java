@@ -8,6 +8,7 @@ import com.mrsmith.provider.ProviderException;
 import com.mrsmith.provider.ProviderResponse;
 import com.mrsmith.provider.Role;
 import com.mrsmith.provider.Usage;
+import com.mrsmith.session.TranscriptWriter;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -15,6 +16,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.UUID;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -25,8 +27,9 @@ class ChatSessionTest {
     @Test
     void sendsUserMessageAndStoresReplyInHistory() throws Exception {
         FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config());
+        ChatSession session = new ChatSession(provider, io, config(), transcripts);
         session.run();
         assertEquals(1, provider.receivedHistories.get(0).size());
         assertEquals(Role.USER, provider.receivedHistories.get(0).get(0).role());
@@ -37,8 +40,9 @@ class ChatSessionTest {
     @Test
     void keepsContextAcrossTurns() throws Exception {
         FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("first", "second", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config());
+        ChatSession session = new ChatSession(provider, io, config(), transcripts);
         session.run();
         assertEquals(2, provider.receivedHistories.size());
         List<ChatMessage> secondTurn = provider.receivedHistories.get(1);
@@ -51,8 +55,9 @@ class ChatSessionTest {
     @Test
     void resetClearsHistory() throws Exception {
         FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("first", "/reset", "second", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config());
+        ChatSession session = new ChatSession(provider, io, config(), transcripts);
         session.run();
         List<ChatMessage> secondTurn = provider.receivedHistories.get(1);
         assertEquals(1, secondTurn.size());
@@ -62,8 +67,9 @@ class ChatSessionTest {
     @Test
     void unknownCommandIsNotSentToProvider() throws Exception {
         FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("/bogus", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config());
+        ChatSession session = new ChatSession(provider, io, config(), transcripts);
         session.run();
         assertTrue(provider.receivedHistories.isEmpty());
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("Unknown command")));
@@ -75,8 +81,9 @@ class ChatSessionTest {
             throw new ProviderException("HTTP 401: bad key");
         };
         FakeProvider ok = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "again", "/exit"));
-        ChatSession session = new ChatSession(new FirstThenProvider(failing, ok), io, config());
+        ChatSession session = new ChatSession(new FirstThenProvider(failing, ok), io, config(), transcripts);
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("HTTP 401")));
         assertEquals(1, ok.calls);
@@ -89,8 +96,9 @@ class ChatSessionTest {
             throw new ProviderException("Stream interrupted", null, "partial");
         };
         FakeProvider ok = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "again", "/exit"));
-        ChatSession session = new ChatSession(new FirstThenProvider(interrupted, ok), io, config());
+        ChatSession session = new ChatSession(new FirstThenProvider(interrupted, ok), io, config(), transcripts);
         session.run();
         List<ChatMessage> secondTurn = ok.receivedHistories.get(0);
         assertEquals(3, secondTurn.size());
@@ -104,8 +112,9 @@ class ChatSessionTest {
             throw new IllegalStateException("boom");
         };
         FakeProvider ok = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "again", "/exit"));
-        ChatSession session = new ChatSession(new FirstThenProvider(failing, ok), io, config());
+        ChatSession session = new ChatSession(new FirstThenProvider(failing, ok), io, config(), transcripts);
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("boom")));
         assertEquals(1, ok.calls);
@@ -114,8 +123,9 @@ class ChatSessionTest {
     @Test
     void printsPerTurnUsageLine() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(1200, 300), false);
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config());
+        ChatSession session = new ChatSession(provider, io, config(), transcripts);
         session.run();
         assertTrue(io.lines.contains("tokens: 1,200 in · 300 out · total 1,500 · session 1,500"));
     }
@@ -123,8 +133,9 @@ class ChatSessionTest {
     @Test
     void usageLineFlagsEstimates() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(100, 50), true);
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config());
+        ChatSession session = new ChatSession(provider, io, config(), transcripts);
         session.run();
         assertTrue(io.lines.contains("tokens: 100 in (est.) · 50 out (est.) · total 150 · session 150 (est.)"));
     }
@@ -132,8 +143,9 @@ class ChatSessionTest {
     @Test
     void usageCommandPrintsReport() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(1200, 300), false);
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "/usage", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config());
+        ChatSession session = new ChatSession(provider, io, config(), transcripts);
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("Session usage:")));
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("  total:       1,500")));
@@ -143,8 +155,9 @@ class ChatSessionTest {
     @Test
     void warnsAtEightyFiveAndHundredPercent() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(900, 0), false);
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "again", "once more", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config(1000));
+        ChatSession session = new ChatSession(provider, io, config(1000), transcripts);
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("session at 90% of your configured 1,000-token context limit")));
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("session reached 100% of your configured 1,000-token context limit")));
@@ -153,8 +166,9 @@ class ChatSessionTest {
     @Test
     void warnsOncePerThreshold() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(900, 0), false);
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("a", "b", "c", "d", "e", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config(1000));
+        ChatSession session = new ChatSession(provider, io, config(1000), transcripts);
         session.run();
         long warnings = io.lines.stream().filter(l -> l.startsWith("Warning:")).count();
         assertEquals(2, warnings);
@@ -163,8 +177,9 @@ class ChatSessionTest {
     @Test
     void resetClearsUsageTracker() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(900, 0), false);
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "/reset", "/usage", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config(1000));
+        ChatSession session = new ChatSession(provider, io, config(1000), transcripts);
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("  total:       0")));
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("  history: 0 messages")));
@@ -173,8 +188,9 @@ class ChatSessionTest {
     @Test
     void usageReportShowsContextLimitWhenConfigured() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(1200, 300), false);
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "/usage", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config(128000));
+        ChatSession session = new ChatSession(provider, io, config(128000), transcripts);
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("  context limit: 128,000 configured (1% used)")));
     }
@@ -182,8 +198,9 @@ class ChatSessionTest {
     @Test
     void streamsReasoningThroughIo() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(100, 50), true, "ponder");
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "/exit"));
-        ChatSession session = new ChatSession(provider, io, config());
+        ChatSession session = new ChatSession(provider, io, config(), transcripts);
         session.run();
         assertTrue(io.lines.contains("ponder"));
     }
@@ -191,8 +208,9 @@ class ChatSessionTest {
     @Test
     void storesThinkingInHistory() throws Exception {
         FakeProvider ok = new FakeProvider(new Usage(0, 0), false, "ponder");
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("first", "second", "/exit"));
-        ChatSession session = new ChatSession(ok, io, config());
+        ChatSession session = new ChatSession(ok, io, config(), transcripts);
         session.run();
         List<ChatMessage> secondTurn = ok.receivedHistories.get(1);
         assertEquals(3, secondTurn.size());
@@ -206,13 +224,97 @@ class ChatSessionTest {
             throw new ProviderException("Stream interrupted", null, null, "half");
         };
         FakeProvider ok = new FakeProvider(new Usage(0, 0), false);
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "again", "/exit"));
-        ChatSession session = new ChatSession(new FirstThenProvider(interrupted, ok), io, config());
+        ChatSession session = new ChatSession(new FirstThenProvider(interrupted, ok), io, config(), transcripts);
         session.run();
         List<ChatMessage> secondTurn = ok.receivedHistories.get(0);
         assertEquals(3, secondTurn.size());
         assertEquals(Role.ASSISTANT, secondTurn.get(1).role());
         assertEquals("half", secondTurn.get(1).thinking());
+    }
+
+    @Test
+    void startsSessionAndPrintsUuid() throws Exception {
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("/exit"));
+        ChatSession session = new ChatSession(provider, io, config(), transcripts);
+        session.run();
+        assertEquals(1, transcripts.starts.size());
+        assertTrue(io.lines.stream().anyMatch(l -> l.startsWith("Session: ")));
+    }
+
+    @Test
+    void recordsUserAndAssistantTurns() throws Exception {
+        FakeProvider provider = new FakeProvider(new Usage(1200, 300), false);
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/exit"));
+        ChatSession session = new ChatSession(provider, io, config(), transcripts);
+        session.run();
+        assertEquals(List.of("hello"), transcripts.userContents);
+        assertEquals(List.of("hello response"), transcripts.assistantContents);
+        assertEquals(new Usage(1200, 300), transcripts.assistantUsages.get(0));
+        assertEquals(false, transcripts.assistantEstimated.get(0));
+    }
+
+    @Test
+    void recordsThinkingOnAssistantTurn() throws Exception {
+        FakeProvider provider = new FakeProvider(new Usage(0, 0), false, "ponder");
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/exit"));
+        ChatSession session = new ChatSession(provider, io, config(), transcripts);
+        session.run();
+        assertEquals(List.of("ponder"), transcripts.assistantThinkings);
+    }
+
+    @Test
+    void resetStartsNewSession() throws Exception {
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("/reset", "/exit"));
+        ChatSession session = new ChatSession(provider, io, config(), transcripts);
+        session.run();
+        assertEquals(2, transcripts.starts.size());
+    }
+
+    @Test
+    void recordsPartialContentOnInterruption() throws Exception {
+        Provider interrupted = (history, sink, reasoningSink) -> {
+            sink.accept("partial");
+            throw new ProviderException("Stream interrupted", null, "partial");
+        };
+        FakeProvider ok = new FakeProvider(new Usage(0, 0), false);
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/exit"));
+        ChatSession session = new ChatSession(new FirstThenProvider(interrupted, ok), io, config(), transcripts);
+        session.run();
+        assertEquals(List.of("partial"), transcripts.assistantContents);
+        assertTrue(transcripts.assistantUsages.get(0) == null);
+    }
+
+    @Test
+    void continuesWhenTranscriptStartFails() throws Exception {
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        transcripts.failStart = true;
+        StubIo io = new StubIo(List.of("hello", "/exit"));
+        ChatSession session = new ChatSession(provider, io, config(), transcripts);
+        session.run();
+        assertEquals(1, provider.calls);
+        assertTrue(transcripts.userContents.isEmpty());
+    }
+
+    @Test
+    void continuesWhenTranscriptAppendFails() throws Exception {
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        transcripts.failAppend = true;
+        StubIo io = new StubIo(List.of("hello", "again", "/exit"));
+        ChatSession session = new ChatSession(provider, io, config(), transcripts);
+        session.run();
+        assertEquals(2, provider.calls);
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("again response")));
     }
 
     private AppConfig config() {
@@ -306,6 +408,45 @@ class ChatSessionTest {
                 return first.send(history, tokenSink, reasoningSink);
             }
             return then.send(history, tokenSink, reasoningSink);
+        }
+    }
+
+    static class FakeTranscriptWriter implements TranscriptWriter {
+        final List<UUID> starts = new ArrayList<>();
+        final List<String> userContents = new ArrayList<>();
+        final List<String> assistantContents = new ArrayList<>();
+        final List<String> assistantThinkings = new ArrayList<>();
+        final List<Usage> assistantUsages = new ArrayList<>();
+        final List<Boolean> assistantEstimated = new ArrayList<>();
+        boolean failStart;
+        boolean failAppend;
+
+        @Override
+        public void start(UUID sessionId) throws IOException {
+            if (failStart) {
+                throw new IOException("boom");
+            }
+            starts.add(sessionId);
+        }
+
+        @Override
+        public void appendUser(UUID sessionId, String content) throws IOException {
+            if (failAppend) {
+                throw new IOException("boom");
+            }
+            userContents.add(content);
+        }
+
+        @Override
+        public void appendAssistant(UUID sessionId, String content, String thinking,
+                                    Usage usage, boolean estimated) throws IOException {
+            if (failAppend) {
+                throw new IOException("boom");
+            }
+            assistantContents.add(content);
+            assistantThinkings.add(thinking);
+            assistantUsages.add(usage);
+            assistantEstimated.add(estimated);
         }
     }
 }

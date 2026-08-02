@@ -7,11 +7,14 @@ import com.mrsmith.provider.Provider;
 import com.mrsmith.provider.ProviderException;
 import com.mrsmith.provider.ProviderResponse;
 import com.mrsmith.provider.Role;
+import com.mrsmith.provider.Usage;
+import com.mrsmith.session.TranscriptWriter;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 
 public class ChatSession {
 
@@ -21,19 +24,23 @@ public class ChatSession {
     private final Provider provider;
     private final IO io;
     private final AppConfig config;
+    private final TranscriptWriter transcripts;
     private final List<ChatMessage> history = new ArrayList<>();
     private final UsageTracker tracker = new UsageTracker();
     private boolean warned85;
     private boolean warned100;
+    private UUID currentSessionId;
 
-    public ChatSession(Provider provider, IO io, AppConfig config) {
+    public ChatSession(Provider provider, IO io, AppConfig config, TranscriptWriter transcripts) {
         this.provider = provider;
         this.io = io;
         this.config = config;
+        this.transcripts = transcripts;
     }
 
     public void run() throws IOException {
         io.writeLine("Mr Smith. Type /help for commands, /exit to quit.");
+        startNewSession();
         String line;
         while ((line = io.readLine()) != null) {
             if (line.equals("/exit")) {
@@ -43,9 +50,12 @@ public class ChatSession {
                 continue;
             }
             history.add(new ChatMessage(Role.USER, line));
+            appendUser(line);
             try {
                 ProviderResponse response = provider.send(history, io::write, io::writeReasoning);
                 history.add(response.message());
+                appendAssistant(response.message().content(), response.message().thinking(),
+                        response.usage(), response.usageEstimated());
                 io.writeLine("");
                 tracker.recordTurn(response.usage(), response.usageEstimated());
                 String usageLine = tracker.lastTurnLine();
@@ -56,6 +66,7 @@ public class ChatSession {
             } catch (ProviderException e) {
                 if (e.hasPartialContent() || e.partialThinking() != null) {
                     history.add(new ChatMessage(Role.ASSISTANT, e.partialContent(), e.partialThinking()));
+                    appendAssistant(e.partialContent(), e.partialThinking(), null, false);
                 }
                 io.writeLine("");
                 io.writeLine("Error: " + e.getMessage());
@@ -63,6 +74,42 @@ public class ChatSession {
                 io.writeLine("");
                 io.writeLine("Error: " + e.getMessage());
             }
+        }
+    }
+
+    private void startNewSession() {
+        UUID id = UUID.randomUUID();
+        try {
+            transcripts.start(id);
+            currentSessionId = id;
+        } catch (IOException e) {
+            System.err.println("Warning: could not create session folder: " + e.getMessage());
+            currentSessionId = null;
+        }
+        io.writeLine("Session: " + id);
+    }
+
+    private void appendUser(String content) {
+        if (currentSessionId == null) {
+            return;
+        }
+        try {
+            transcripts.appendUser(currentSessionId, content);
+        } catch (IOException e) {
+            System.err.println("Warning: could not write session transcript: " + e.getMessage());
+            currentSessionId = null;
+        }
+    }
+
+    private void appendAssistant(String content, String thinking, Usage usage, boolean estimated) {
+        if (currentSessionId == null) {
+            return;
+        }
+        try {
+            transcripts.appendAssistant(currentSessionId, content, thinking, usage, estimated);
+        } catch (IOException e) {
+            System.err.println("Warning: could not write session transcript: " + e.getMessage());
+            currentSessionId = null;
         }
     }
 
@@ -107,6 +154,7 @@ public class ChatSession {
                 tracker.reset();
                 warned85 = false;
                 warned100 = false;
+                startNewSession();
                 io.writeLine("History cleared.");
             }
             case "/usage" -> io.writeLine(usageReport());
