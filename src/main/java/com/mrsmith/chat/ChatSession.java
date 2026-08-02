@@ -198,7 +198,10 @@ public class ChatSession {
             return true;
         }
         switch (line) {
-            case "/reset" -> startFreshSession();
+            case "/reset" -> {
+                startFreshSession();
+                io.writeLine("History cleared.");
+            }
             case "/agents" -> io.writeLine("Agents: " + String.join(", ", agents.agentNames()));
             case "/usage" -> io.writeLine(usageReport());
             case "/help" -> io.writeLine("Commands: /exit, /reset, /help, /usage, /agents, /agent <name>. Anything else is sent to the LLM.");
