@@ -53,8 +53,8 @@ public class ChatSession {
         io.writeLine("Mr Smith. Type /help for commands, /exit to quit.");
         currentAgentName = initialAgentName;
         applyAgent();
-        startFreshSession();
         io.writeLine("Agent: " + currentAgentName);
+        startFreshSession();
         String line;
         while ((line = io.readLine()) != null) {
             if (line.equals("/exit")) {
@@ -130,8 +130,8 @@ public class ChatSession {
         }
         currentAgentName = name;
         applyAgent();
-        startFreshSession();
         io.writeLine("Agent: " + name);
+        startFreshSession();
     }
 
     private void appendUser(String content) {

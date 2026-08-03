@@ -71,6 +71,20 @@ class AgentCatalogTest {
     }
 
     @Test
+    void providerBlankApiKeyThrows() {
+        assertThrows(ConfigException.class, () -> new AgentCatalog(
+                List.of(new ProviderConfig("opencode", "", "https://example.com/v1")),
+                List.of(agent), "coder", true, Path.of("/tmp/s")));
+    }
+
+    @Test
+    void agentMissingModelThrows() {
+        assertThrows(ConfigException.class, () -> new AgentCatalog(
+                List.of(provider), List.of(new AgentConfig("x", "opencode", null, null, null)),
+                "x", true, Path.of("/tmp/s")));
+    }
+
+    @Test
     void agentNamesReturnsAll() {
         AgentCatalog catalog = new AgentCatalog(List.of(provider), List.of(agent), "coder", true, Path.of("/tmp/s"));
         assertTrue(catalog.agentNames().contains("coder"));

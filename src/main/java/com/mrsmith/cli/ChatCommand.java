@@ -40,6 +40,12 @@ public class ChatCommand implements Callable<Integer> {
         }
 
         String initialAgent = agent != null ? agent : catalog.defaultName();
+        try {
+            catalog.resolve(initialAgent);
+        } catch (ConfigException e) {
+            System.err.println(e.getMessage());
+            return 1;
+        }
         IO io = new ReplIo();
         TranscriptWriter transcripts = new FileTranscriptWriter(catalog.sessionsDir());
         ContextBuilder contextBuilder = new FullContextBuilder();

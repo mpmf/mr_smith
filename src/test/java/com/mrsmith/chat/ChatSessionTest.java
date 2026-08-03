@@ -35,7 +35,6 @@ class ChatSessionTest {
     void sendsUserMessageAndStoresReplyInHistory() throws Exception {
         FakeProvider provider = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "/exit"));
         ChatSession session = session(provider, io, transcripts, catalog());
         session.run();
@@ -49,7 +48,6 @@ class ChatSessionTest {
     void keepsContextAcrossTurns() throws Exception {
         FakeProvider provider = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("first", "second", "/exit"));
         ChatSession session = session(provider, io, transcripts, catalog());
         session.run();
@@ -65,7 +63,6 @@ class ChatSessionTest {
     void resetClearsHistory() throws Exception {
         FakeProvider provider = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("first", "/reset", "second", "/exit"));
         ChatSession session = session(provider, io, transcripts, catalog());
         session.run();
@@ -78,7 +75,6 @@ class ChatSessionTest {
     void unknownCommandIsNotSentToProvider() throws Exception {
         FakeProvider provider = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("/bogus", "/exit"));
         ChatSession session = session(provider, io, transcripts, catalog());
         session.run();
@@ -93,7 +89,6 @@ class ChatSessionTest {
         };
         FakeProvider ok = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "again", "/exit"));
         ChatSession session = session(new FirstThenProvider(failing, ok), io, transcripts, catalog());
         session.run();
@@ -109,7 +104,6 @@ class ChatSessionTest {
         };
         FakeProvider ok = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "again", "/exit"));
         ChatSession session = session(new FirstThenProvider(interrupted, ok), io, transcripts, catalog());
         session.run();
@@ -126,7 +120,6 @@ class ChatSessionTest {
         };
         FakeProvider ok = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "again", "/exit"));
         ChatSession session = session(new FirstThenProvider(failing, ok), io, transcripts, catalog());
         session.run();
@@ -138,7 +131,6 @@ class ChatSessionTest {
     void printsPerTurnUsageLine() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(1200, 300), false);
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "/exit"));
         ChatSession session = session(provider, io, transcripts, catalog());
         session.run();
@@ -149,7 +141,6 @@ class ChatSessionTest {
     void usageLineFlagsEstimates() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(100, 50), true);
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "/exit"));
         ChatSession session = session(provider, io, transcripts, catalog());
         session.run();
@@ -160,7 +151,6 @@ class ChatSessionTest {
     void usageCommandPrintsReport() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(1200, 300), false);
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "/usage", "/exit"));
         ChatSession session = session(provider, io, transcripts, catalog());
         session.run();
@@ -173,7 +163,6 @@ class ChatSessionTest {
     void warnsAtEightyFiveAndHundredPercent() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(900, 0), false);
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "again", "once more", "/exit"));
         ChatSession session = session(provider, io, transcripts, catalog(null, 1000));
         session.run();
@@ -185,7 +174,6 @@ class ChatSessionTest {
     void warnsOncePerThreshold() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(900, 0), false);
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("a", "b", "c", "d", "e", "/exit"));
         ChatSession session = session(provider, io, transcripts, catalog(null, 1000));
         session.run();
@@ -197,7 +185,6 @@ class ChatSessionTest {
     void resetClearsUsageTracker() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(900, 0), false);
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "/reset", "/usage", "/exit"));
         ChatSession session = session(provider, io, transcripts, catalog(null, 1000));
         session.run();
@@ -209,7 +196,6 @@ class ChatSessionTest {
     void usageReportShowsContextLimitWhenConfigured() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(1200, 300), false);
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "/usage", "/exit"));
         ChatSession session = session(provider, io, transcripts, catalog(null, 128000));
         session.run();
@@ -220,7 +206,6 @@ class ChatSessionTest {
     void streamsReasoningThroughIo() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(100, 50), true, "ponder");
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "/exit"));
         ChatSession session = session(provider, io, transcripts, catalog());
         session.run();
@@ -231,7 +216,6 @@ class ChatSessionTest {
     void thinkingIsNotSentToProvider() throws Exception {
         FakeProvider ok = new FakeProvider(new Usage(0, 0), false, "ponder");
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("first", "second", "/exit"));
         ChatSession session = session(ok, io, transcripts, catalog());
         session.run();
@@ -245,7 +229,6 @@ class ChatSessionTest {
     void includesSystemMessageInContext() throws Exception {
         FakeProvider provider = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "/exit"));
         ChatSession session = session(provider, io, transcripts, catalog("You are helpful", null));
         session.run();
@@ -263,7 +246,6 @@ class ChatSessionTest {
         };
         FakeProvider ok = new FakeProvider(new Usage(0, 0), false);
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "again", "/exit"));
         ChatSession session = session(new FirstThenProvider(interrupted, ok), io, transcripts, catalog());
         session.run();
@@ -278,7 +260,6 @@ class ChatSessionTest {
     void startsSessionAndPrintsUuid() throws Exception {
         FakeProvider provider = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("/exit"));
         ChatSession session = session(provider, io, transcripts, catalog());
         session.run();
@@ -290,7 +271,6 @@ class ChatSessionTest {
     void recordsUserAndAssistantTurns() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(1200, 300), false);
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "/exit"));
         ChatSession session = session(provider, io, transcripts, catalog());
         session.run();
@@ -304,7 +284,6 @@ class ChatSessionTest {
     void recordsThinkingOnAssistantTurn() throws Exception {
         FakeProvider provider = new FakeProvider(new Usage(0, 0), false, "ponder");
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "/exit"));
         ChatSession session = session(provider, io, transcripts, catalog());
         session.run();
@@ -315,7 +294,6 @@ class ChatSessionTest {
     void resetStartsNewSession() throws Exception {
         FakeProvider provider = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("/reset", "/exit"));
         ChatSession session = session(provider, io, transcripts, catalog());
         session.run();
@@ -330,7 +308,6 @@ class ChatSessionTest {
         };
         FakeProvider ok = new FakeProvider(new Usage(0, 0), false);
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         StubIo io = new StubIo(List.of("hello", "/exit"));
         ChatSession session = session(new FirstThenProvider(interrupted, ok), io, transcripts, catalog());
         session.run();
@@ -342,7 +319,6 @@ class ChatSessionTest {
     void continuesWhenTranscriptStartFails() throws Exception {
         FakeProvider provider = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         transcripts.failStart = true;
         StubIo io = new StubIo(List.of("hello", "/exit"));
         ChatSession session = session(provider, io, transcripts, catalog());
@@ -355,7 +331,6 @@ class ChatSessionTest {
     void continuesWhenTranscriptAppendFails() throws Exception {
         FakeProvider provider = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        ContextBuilder contextBuilder = new FullContextBuilder();
         transcripts.failAppend = true;
         StubIo io = new StubIo(List.of("hello", "again", "/exit"));
         ChatSession session = session(provider, io, transcripts, catalog());

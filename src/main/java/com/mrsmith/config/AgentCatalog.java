@@ -21,7 +21,8 @@ public class AgentCatalog {
             if (this.providers.putIfAbsent(provider.name(), provider) != null) {
                 throw new ConfigException("Duplicate provider name: " + provider.name());
             }
-            if (provider.apiKey() == null || provider.baseUrl() == null || provider.baseUrl().isBlank()) {
+            if (provider.apiKey() == null || provider.apiKey().isBlank()
+                    || provider.baseUrl() == null || provider.baseUrl().isBlank()) {
                 throw new ConfigException("Provider '" + provider.name()
                         + "' is missing apiKey or baseUrl.");
             }
@@ -34,6 +35,9 @@ public class AgentCatalog {
             if (!this.providers.containsKey(agent.provider())) {
                 throw new ConfigException("Agent '" + agent.name() + "' references unknown provider '"
                         + agent.provider() + "'");
+            }
+            if (agent.model() == null || agent.model().isBlank()) {
+                throw new ConfigException("Agent '" + agent.name() + "' is missing model.");
             }
         }
         if (this.agents.isEmpty()) {

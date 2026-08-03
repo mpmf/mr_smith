@@ -72,7 +72,7 @@ public final class ConfigLoader {
                 result.add(new AgentConfig(
                         node.path("name").asText(),
                         node.path("provider").asText(),
-                        node.path("model").asText(),
+                        node.path("model").asText(null),
                         node.path("systemPrompt").asText(null),
                         node.hasNonNull("maxContextTokens") ? node.get("maxContextTokens").asInt() : null));
             }
