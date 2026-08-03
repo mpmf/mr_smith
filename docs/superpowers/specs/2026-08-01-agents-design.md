@@ -129,7 +129,7 @@ ChatCommand.call():
 | Agent references an unknown provider | `ConfigException` at load |
 | Duplicate provider/agent names | `ConfigException` at load |
 | No agents defined | `ConfigException` at load |
-| Malformed config file | Existing warning + fallback |
+| Missing or malformed config file | `ConfigException` at load (no agents to run) |
 
 ## Testing
 
