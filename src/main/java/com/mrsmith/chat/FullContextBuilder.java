@@ -31,7 +31,7 @@ public class FullContextBuilder implements ContextBuilder {
 
     @Override
     public void appendAssistantToolCalls(List<ToolCall> toolCalls) {
-        context.add(new ChatMessage(Role.ASSISTANT, null, null, toolCalls, null));
+        context.add(new ChatMessage(Role.ASSISTANT, null, null, List.copyOf(toolCalls), null));
     }
 
     @Override
