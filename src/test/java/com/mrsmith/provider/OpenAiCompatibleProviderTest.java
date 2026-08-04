@@ -364,6 +364,7 @@ class OpenAiCompatibleProviderTest {
         assertTrue(body.contains("\"tool_calls\":[{"));
         assertTrue(body.contains("\"id\":\"call_1\""));
         assertTrue(body.contains("\"function\":{\"name\":\"shell\",\"arguments\":\"{\\\"command\\\":\\\"ls\\\"}\"}"));
+        assertTrue(body.contains("\"content\":null"));
     }
 
     @Test

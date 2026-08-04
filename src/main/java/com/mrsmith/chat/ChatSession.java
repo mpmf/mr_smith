@@ -68,7 +68,7 @@ public class ChatSession {
             contextBuilder.appendUser(line);
             try {
                 List<ChatMessage> context = contextBuilder.messages();
-                ProviderResponse response = provider.send(context, io::write, io::writeReasoning);
+                ProviderResponse response = provider.send(context, List.of(), io::write, io::writeReasoning);
                 history.add(response.message());
                 contextBuilder.appendAssistant(response.message().content());
                 appendAssistant(response.message().content(), response.message().thinking(),

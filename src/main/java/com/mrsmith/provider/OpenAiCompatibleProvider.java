@@ -177,6 +177,9 @@ public class OpenAiCompatibleProvider implements Provider {
             return node;
         }
         if (message.role() == Role.TOOL) {
+            if (message.toolCallId() == null) {
+                throw new IllegalArgumentException("Tool result message is missing a tool_call_id");
+            }
             node.put("tool_call_id", message.toolCallId());
             node.put("content", message.content() == null ? "" : message.content());
             return node;

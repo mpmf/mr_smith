@@ -13,6 +13,7 @@ import com.mrsmith.provider.ProviderResponse;
 import com.mrsmith.provider.Role;
 import com.mrsmith.provider.Usage;
 import com.mrsmith.session.TranscriptWriter;
+import com.mrsmith.tool.Tool;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -84,7 +85,7 @@ class ChatSessionTest {
 
     @Test
     void providerErrorIsShownAndLoopContinues() throws Exception {
-        Provider failing = (history, sink, reasoningSink) -> {
+        Provider failing = (history, tools, sink, reasoningSink) -> {
             throw new ProviderException("HTTP 401: bad key");
         };
         FakeProvider ok = new FakeProvider();
@@ -98,7 +99,7 @@ class ChatSessionTest {
 
     @Test
     void partialContentFromInterruptedStreamIsKeptInHistory() throws Exception {
-        Provider interrupted = (history, sink, reasoningSink) -> {
+        Provider interrupted = (history, tools, sink, reasoningSink) -> {
             sink.accept("partial");
             throw new ProviderException("Stream interrupted", null, "partial");
         };
@@ -115,7 +116,7 @@ class ChatSessionTest {
 
     @Test
     void genericProviderFailureIsShownAndLoopContinues() throws Exception {
-        Provider failing = (history, sink, reasoningSink) -> {
+        Provider failing = (history, tools, sink, reasoningSink) -> {
             throw new IllegalStateException("boom");
         };
         FakeProvider ok = new FakeProvider();
@@ -240,7 +241,7 @@ class ChatSessionTest {
 
     @Test
     void interruptedReasoningPreservesPartialThinking() throws Exception {
-        Provider interrupted = (history, sink, reasoningSink) -> {
+        Provider interrupted = (history, tools, sink, reasoningSink) -> {
             reasoningSink.accept("half");
             throw new ProviderException("Stream interrupted", null, null, "half");
         };
@@ -302,7 +303,7 @@ class ChatSessionTest {
 
     @Test
     void recordsPartialContentOnInterruption() throws Exception {
-        Provider interrupted = (history, sink, reasoningSink) -> {
+        Provider interrupted = (history, tools, sink, reasoningSink) -> {
             sink.accept("partial");
             throw new ProviderException("Stream interrupted", null, "partial");
         };
@@ -465,7 +466,7 @@ class ChatSessionTest {
         }
 
         @Override
-        public ProviderResponse send(List<ChatMessage> history, Consumer<String> tokenSink,
+        public ProviderResponse send(List<ChatMessage> history, List<Tool> tools, Consumer<String> tokenSink,
                                      Consumer<String> reasoningSink) {
             receivedHistories.add(new ArrayList<>(history));
             calls++;
@@ -490,12 +491,12 @@ class ChatSessionTest {
         }
 
         @Override
-        public ProviderResponse send(List<ChatMessage> history, Consumer<String> tokenSink,
+        public ProviderResponse send(List<ChatMessage> history, List<Tool> tools, Consumer<String> tokenSink,
                                      Consumer<String> reasoningSink) {
             if (calls++ == 0) {
-                return first.send(history, tokenSink, reasoningSink);
+                return first.send(history, tools, tokenSink, reasoningSink);
             }
-            return then.send(history, tokenSink, reasoningSink);
+            return then.send(history, tools, tokenSink, reasoningSink);
         }
     }
 
