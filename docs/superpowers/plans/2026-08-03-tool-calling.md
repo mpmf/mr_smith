@@ -1761,6 +1761,9 @@ to:
             return node;
         }
         if (message.role() == Role.TOOL) {
+            if (message.toolCallId() == null) {
+                throw new IllegalArgumentException("Tool result message is missing a tool_call_id");
+            }
             node.put("tool_call_id", message.toolCallId());
             node.put("content", message.content() == null ? "" : message.content());
             return node;
@@ -1856,6 +1859,7 @@ Append these to `src/test/java/com/mrsmith/provider/OpenAiCompatibleProviderTest
         RecordedRequest request = server.takeRequest();
         String body = request.getBody().readUtf8();
         assertTrue(body.contains("\"tool_calls\":[{"));
+        assertTrue(body.contains("\"content\":null"));
         assertTrue(body.contains("\"id\":\"call_1\""));
         assertTrue(body.contains("\"function\":{\"name\":\"shell\",\"arguments\":\"{\\\"command\\\":\\\"ls\\\"}\"}"));
     }
