@@ -99,9 +99,12 @@ public final class SseParser {
         }
         List<ToolCall> calls = new ArrayList<>();
         for (ToolCallAccumulator acc : toolCalls.values()) {
+            if (acc.id == null || acc.id.isBlank()) {
+                continue;
+            }
             calls.add(new ToolCall(acc.id, acc.name, parseArguments(acc.arguments.toString())));
         }
-        return calls;
+        return calls.isEmpty() ? null : calls;
     }
 
     private static JsonNode parseArguments(String arguments) {
@@ -109,7 +112,8 @@ public final class SseParser {
             return JSON.createObjectNode();
         }
         try {
-            return JSON.readTree(arguments);
+            JsonNode parsed = JSON.readTree(arguments);
+            return parsed.isObject() ? parsed : JSON.createObjectNode();
         } catch (IOException e) {
             return JSON.createObjectNode();
         }

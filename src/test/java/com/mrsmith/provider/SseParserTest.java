@@ -252,4 +252,29 @@ class SseParserTest {
         assertEquals(1, result.toolCalls().size());
         assertEquals(0, result.toolCalls().get(0).arguments().size());
     }
+
+    @Test
+    void nonObjectArgumentsFallBackToEmptyObject() throws Exception {
+        String sse = """
+                data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"shell","arguments":"[1,2]"}}]}}]}
+
+                data: [DONE]
+
+                """;
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), s -> { }, s -> { });
+        assertEquals(1, result.toolCalls().size());
+        assertEquals(0, result.toolCalls().get(0).arguments().size());
+    }
+
+    @Test
+    void toolCallWithoutIdIsDropped() throws Exception {
+        String sse = """
+                data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"shell","arguments":"{}"}}]}}]}
+
+                data: [DONE]
+
+                """;
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), s -> { }, s -> { });
+        assertEquals(null, result.toolCalls());
+    }
 }
