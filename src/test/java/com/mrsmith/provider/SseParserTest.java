@@ -192,4 +192,64 @@ class SseParserTest {
         SseParser.consume(new BufferedReader(new StringReader(sse)), deltas::add, s -> { });
         assertEquals(List.of("hello"), deltas);
     }
+
+    @Test
+    void accumulatesToolCallArgumentsAcrossChunks() throws Exception {
+        String sse = """
+                data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"shell","arguments":"{\\"command\\":\\""}}]}}]}
+
+                data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"ls\\"}"}}]}}]}
+
+                data: [DONE]
+
+                """;
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), s -> { }, s -> { });
+        assertEquals(1, result.toolCalls().size());
+        ToolCall call = result.toolCalls().get(0);
+        assertEquals("call_1", call.id());
+        assertEquals("shell", call.name());
+        assertEquals("ls", call.arguments().path("command").asText());
+    }
+
+    @Test
+    void multipleToolCallsByIndex() throws Exception {
+        String sse = """
+                data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"read_file","arguments":"{\\"path\\":\\"a.txt\\"}"}},{"index":1,"id":"c2","function":{"name":"glob","arguments":"{\\"pattern\\":\\"**/*.java\\"}"}}]}}]}
+
+                data: [DONE]
+
+                """;
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), s -> { }, s -> { });
+        assertEquals(2, result.toolCalls().size());
+        assertEquals("c1", result.toolCalls().get(0).id());
+        assertEquals("read_file", result.toolCalls().get(0).name());
+        assertEquals("c2", result.toolCalls().get(1).id());
+        assertEquals("glob", result.toolCalls().get(1).name());
+    }
+
+    @Test
+    void toolCallsNullWhenNonePresent() throws Exception {
+        String sse = """
+                data: {"choices":[{"delta":{"content":"plain answer"}}]}
+
+                data: [DONE]
+
+                """;
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), s -> { }, s -> { });
+        assertEquals(null, result.toolCalls());
+        assertEquals("plain answer", result.content());
+    }
+
+    @Test
+    void ignoresToolCallsWithMalformedArguments() throws Exception {
+        String sse = """
+                data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"shell","arguments":"not json"}}]}}]}
+
+                data: [DONE]
+
+                """;
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), s -> { }, s -> { });
+        assertEquals(1, result.toolCalls().size());
+        assertEquals(0, result.toolCalls().get(0).arguments().size());
+    }
 }
