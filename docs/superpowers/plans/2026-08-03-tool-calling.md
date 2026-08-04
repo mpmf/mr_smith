@@ -795,7 +795,7 @@ class ShellToolTest {
     Path tempDir;
 
     @Test
-    void returnsStdoutAndExitCodeZero() {
+    void returnsStdoutAndExitCodeZero() throws Exception {
         ShellTool tool = new ShellTool(tempDir, 5000);
         ToolResult result = tool.execute(JSON.readTree("{\"command\":\"echo hi\"}"));
         assertFalse(result.error());
@@ -803,7 +803,7 @@ class ShellToolTest {
     }
 
     @Test
-    void capturesNonZeroExitCode() {
+    void capturesNonZeroExitCode() throws Exception {
         ShellTool tool = new ShellTool(tempDir, 5000);
         ToolResult result = tool.execute(JSON.readTree("{\"command\":\"echo oops && exit 3\"}"));
         assertTrue(result.error());
@@ -820,7 +820,7 @@ class ShellToolTest {
     }
 
     @Test
-    void timesOutAndReturnsError() {
+    void timesOutAndReturnsError() throws Exception {
         ShellTool tool = new ShellTool(tempDir, 200);
         ToolResult result = tool.execute(JSON.readTree("{\"command\":\"sleep 5\"}"));
         assertTrue(result.error());
@@ -868,7 +868,7 @@ class WebFetchToolTest {
     }
 
     @Test
-    void fetchesBodyText() {
+    void fetchesBodyText() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(200).setBody("hello world"));
         ToolResult result = tool.execute(JSON.readTree("{\"url\":\"" + server.url("/page") + "\"}"));
         assertFalse(result.error());
@@ -876,7 +876,7 @@ class WebFetchToolTest {
     }
 
     @Test
-    void followsRedirects() {
+    void followsRedirects() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(302)
                 .setHeader("Location", "/final"));
         server.enqueue(new MockResponse().setResponseCode(200).setBody("redirected"));
@@ -886,7 +886,7 @@ class WebFetchToolTest {
     }
 
     @Test
-    void returnsErrorOnHttp4xx() {
+    void returnsErrorOnHttp4xx() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(404).setBody("nope"));
         ToolResult result = tool.execute(JSON.readTree("{\"url\":\"" + server.url("/missing") + "\"}"));
         assertTrue(result.error());
@@ -894,7 +894,7 @@ class WebFetchToolTest {
     }
 
     @Test
-    void timesOutWhenServerStalls() {
+    void timesOutWhenServerStalls() throws Exception {
         server.enqueue(new MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE));
         WebFetchTool slowTool = new WebFetchTool(HttpClient.newHttpClient(), 300);
         ToolResult result = slowTool.execute(JSON.readTree("{\"url\":\"" + server.url("/slow") + "\"}"));
