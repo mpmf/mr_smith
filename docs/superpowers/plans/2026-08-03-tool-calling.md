@@ -417,6 +417,7 @@ package com.mrsmith.tool;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -449,11 +450,12 @@ public final class ReadFileTool implements Tool {
 
     @Override
     public JsonNode parametersSchema() {
-        return JSON.createObjectNode()
-                .put("type", "object")
-                .set("properties", JSON.createObjectNode()
-                        .set("path", JSON.createObjectNode().put("type", "string")))
-                .set("required", JSON.createArrayNode().add("path"));
+        ObjectNode schema = JSON.createObjectNode();
+        schema.put("type", "object");
+        schema.set("properties", JSON.createObjectNode()
+                .set("path", JSON.createObjectNode().put("type", "string")));
+        schema.set("required", JSON.createArrayNode().add("path"));
+        return schema;
     }
 
     @Override
@@ -484,6 +486,7 @@ package com.mrsmith.tool;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -515,12 +518,13 @@ public final class WriteFileTool implements Tool {
 
     @Override
     public JsonNode parametersSchema() {
-        return JSON.createObjectNode()
-                .put("type", "object")
-                .set("properties", JSON.createObjectNode()
-                        .set("path", JSON.createObjectNode().put("type", "string"))
-                        .set("content", JSON.createObjectNode().put("type", "string")))
-                .set("required", JSON.createArrayNode().add("path").add("content"));
+        ObjectNode schema = JSON.createObjectNode();
+        schema.put("type", "object");
+        schema.set("properties", JSON.createObjectNode()
+                .set("path", JSON.createObjectNode().put("type", "string"))
+                .set("content", JSON.createObjectNode().put("type", "string")));
+        schema.set("required", JSON.createArrayNode().add("path").add("content"));
+        return schema;
     }
 
     @Override
@@ -534,21 +538,34 @@ public final class WriteFileTool implements Tool {
         if (content == null) {
             throw new ToolException("missing required 'content' argument");
         }
-        Path target = ToolPaths.requireWithin(root, args.path("path").asText(null));
-        Path parent = target.getParent();
-        if (parent != null && Files.exists(parent)) {
-            ToolPaths.requireCanonicalWithin(root, parent);
+        String pathArg = args.path("path").asText(null);
+        if (pathArg == null || pathArg.isBlank()) {
+            throw new ToolException("missing required path argument");
         }
+        Path target;
         try {
-            Files.createDirectories(parent);
+            target = ToolPaths.requireWithin(root, pathArg);
+            Path parent = target.getParent();
+            if (Files.isSymbolicLink(target) || Files.exists(target)) {
+                ToolPaths.requireCanonicalWithin(root, target);
+            } else if (parent != null && Files.exists(parent)) {
+                ToolPaths.requireCanonicalWithin(root, parent);
+            }
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
             Files.writeString(target, content);
-            return new ToolResult("wrote " + root.relativize(target) + " (" + content.length() + " chars)", false);
+        } catch (ToolException e) {
+            return new ToolResult(e.getMessage(), true);
         } catch (IOException e) {
             throw new ToolException("could not write file: " + e.getMessage(), e);
         }
+        return new ToolResult("wrote " + root.relativize(target) + " (" + content.length() + " chars)", false);
     }
 }
 ```
+
+Note: `WriteFileTool.parametersSchema` is hoisted onto an `ObjectNode` local because Jackson 2.17's generic `ObjectNode.set(...)` breaks method chaining. The containment logic canonicalizes the target when it exists OR is a symlink (including dangling symlinks, which fail `toRealPath()` and are refused), else the existing parent — preventing symlink escapes outside the working directory root.
 
 Create `src/main/java/com/mrsmith/tool/ListDirTool.java`:
 
@@ -557,6 +574,7 @@ package com.mrsmith.tool;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -590,11 +608,12 @@ public final class ListDirTool implements Tool {
 
     @Override
     public JsonNode parametersSchema() {
-        return JSON.createObjectNode()
-                .put("type", "object")
-                .set("properties", JSON.createObjectNode()
-                        .set("path", JSON.createObjectNode().put("type", "string")))
-                .set("required", JSON.createArrayNode().add("path"));
+        ObjectNode schema = JSON.createObjectNode();
+        schema.put("type", "object");
+        schema.set("properties", JSON.createObjectNode()
+                .set("path", JSON.createObjectNode().put("type", "string")));
+        schema.set("required", JSON.createArrayNode().add("path"));
+        return schema;
     }
 
     @Override
@@ -627,12 +646,13 @@ package com.mrsmith.tool;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.PathMatcher;
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 public final class GlobTool implements Tool {
@@ -661,11 +681,11 @@ public final class GlobTool implements Tool {
 
     @Override
     public JsonNode parametersSchema() {
-        return JSON.createObjectNode()
-                .put("type", "object")
-                .set("properties", JSON.createObjectNode()
-                        .set("pattern", JSON.createObjectNode().put("type", "string")))
-                .set("required", JSON.createArrayNode().add("pattern"));
+        ObjectNode schema = JSON.createObjectNode();
+        schema.put("type", "object");
+        schema.putObject("properties").putObject("pattern").put("type", "string");
+        schema.putArray("required").add("pattern");
+        return schema;
     }
 
     @Override
@@ -679,12 +699,12 @@ public final class GlobTool implements Tool {
         if (pattern == null || pattern.isBlank()) {
             throw new ToolException("missing required 'pattern' argument");
         }
-        PathMatcher matcher = root.getFileSystem().getPathMatcher("glob:" + pattern);
+        Pattern regex = Pattern.compile(globToRegex(pattern));
         try (Stream<Path> stream = Files.walk(root)) {
             List<String> matches = stream.filter(Files::isRegularFile)
                     .map(p -> root.relativize(p))
-                    .filter(matcher::matches)
-                    .map(Path::toString)
+                    .map(p -> p.toString().replace('\\', '/'))
+                    .filter(p -> regex.matcher(p).matches())
                     .sorted()
                     .toList();
             return new ToolResult(matches.isEmpty() ? "(no matches)" : String.join("\n", matches), false);
@@ -692,8 +712,39 @@ public final class GlobTool implements Tool {
             throw new ToolException("could not glob: " + e.getMessage(), e);
         }
     }
+
+    private static String globToRegex(String glob) {
+        StringBuilder regex = new StringBuilder();
+        int i = 0;
+        while (i < glob.length()) {
+            char c = glob.charAt(i);
+            if (c == '*') {
+                if (i + 1 < glob.length() && glob.charAt(i + 1) == '*') {
+                    if (i + 2 < glob.length() && glob.charAt(i + 2) == '/') {
+                        regex.append("(?:[^/]+/)*");
+                        i += 3;
+                    } else {
+                        regex.append(".*");
+                        i += 2;
+                    }
+                } else {
+                    regex.append("[^/]*");
+                    i++;
+                }
+            } else if (c == '?') {
+                regex.append("[^/]");
+                i++;
+            } else {
+                regex.append(Pattern.quote(String.valueOf(c)));
+                i++;
+            }
+        }
+        return regex.toString();
+    }
 }
 ```
+
+Note: `GlobTool` uses a glob-to-regex converter instead of `java.nio.file.PathMatcher`, because Java's `PathMatcher` `**` requires at least one directory level (`src/**/*.java` would not match `src/Main.java`), while the tests require bash-style `**` = zero-or-more directories.
 
 - [ ] **Step 5: Run test to verify it passes**
 
@@ -864,6 +915,7 @@ package com.mrsmith.tool;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -898,11 +950,12 @@ public final class ShellTool implements Tool {
 
     @Override
     public JsonNode parametersSchema() {
-        return JSON.createObjectNode()
-                .put("type", "object")
-                .set("properties", JSON.createObjectNode()
-                        .set("command", JSON.createObjectNode().put("type", "string")))
-                .set("required", JSON.createArrayNode().add("command"));
+        ObjectNode schema = JSON.createObjectNode();
+        schema.put("type", "object");
+        schema.set("properties", JSON.createObjectNode()
+                .set("command", JSON.createObjectNode().put("type", "string")));
+        schema.set("required", JSON.createArrayNode().add("command"));
+        return schema;
     }
 
     @Override
@@ -951,6 +1004,7 @@ package com.mrsmith.tool;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.net.URI;
@@ -988,11 +1042,12 @@ public final class WebFetchTool implements Tool {
 
     @Override
     public JsonNode parametersSchema() {
-        return JSON.createObjectNode()
-                .put("type", "object")
-                .set("properties", JSON.createObjectNode()
-                        .set("url", JSON.createObjectNode().put("type", "string")))
-                .set("required", JSON.createArrayNode().add("url"));
+        ObjectNode schema = JSON.createObjectNode();
+        schema.put("type", "object");
+        schema.set("properties", JSON.createObjectNode()
+                .set("url", JSON.createObjectNode().put("type", "string")));
+        schema.set("required", JSON.createArrayNode().add("url"));
+        return schema;
     }
 
     @Override
