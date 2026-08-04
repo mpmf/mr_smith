@@ -826,6 +826,15 @@ class ShellToolTest {
         assertTrue(result.error());
         assertTrue(result.content().contains("timed out"));
     }
+
+    @Test
+    void handlesLargeOutputWithoutDeadlock() throws Exception {
+        ShellTool tool = new ShellTool(tempDir, 5000);
+        ToolResult result = tool.execute(JSON.readTree("{\"command\":\"perl -e 'print \\\"x\\\" x 200000'\"}"));
+        assertFalse(result.error());
+        assertTrue(result.content().contains("x".repeat(200000)));
+    }
+}
 }
 ```
 
@@ -845,6 +854,7 @@ import org.junit.jupiter.api.Test;
 import java.net.http.HttpClient;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WebFetchToolTest {
@@ -900,6 +910,14 @@ class WebFetchToolTest {
         ToolResult result = slowTool.execute(JSON.readTree("{\"url\":\"" + server.url("/slow") + "\"}"));
         assertTrue(result.error());
     }
+
+    @Test
+    void malformedUrlThrowsToolException() {
+        WebFetchTool tool = new WebFetchTool(HttpClient.newHttpClient(), 5000);
+        assertThrows(ToolException.class,
+                () -> tool.execute(JSON.readTree("{\"url\":\"http://\"}")));
+    }
+}
 }
 ```
 
@@ -920,8 +938,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 public final class ShellTool implements Tool {
@@ -954,9 +974,8 @@ public final class ShellTool implements Tool {
     public JsonNode parametersSchema() {
         ObjectNode schema = JSON.createObjectNode();
         schema.put("type", "object");
-        schema.set("properties", JSON.createObjectNode()
-                .set("command", JSON.createObjectNode().put("type", "string")));
-        schema.set("required", JSON.createArrayNode().add("command"));
+        schema.putObject("properties").putObject("command").put("type", "string");
+        schema.putArray("required").add("command");
         return schema;
     }
 
@@ -975,27 +994,42 @@ public final class ShellTool implements Tool {
             Process process = new ProcessBuilder("bash", "-c", command)
                     .directory(workDir.toFile())
                     .start();
-            if (!process.waitFor(timeoutMillis, TimeUnit.MILLISECONDS)) {
+            CompletableFuture<String> out = CompletableFuture.supplyAsync(() -> readAll(process.getInputStream()));
+            CompletableFuture<String> err = CompletableFuture.supplyAsync(() -> readAll(process.getErrorStream()));
+            boolean finished = process.waitFor(timeoutMillis, TimeUnit.MILLISECONDS);
+            if (!finished) {
                 process.destroyForcibly();
                 return new ToolResult("shell command timed out after " + timeoutMillis + "ms", true);
             }
-            String out = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            String err = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            String stdout = out.join();
+            String stderr = err.join();
             int code = process.exitValue();
-            String body = code == 0 ? out : (out.isBlank() ? err : out + "\n" + err);
+            String body = code == 0 ? stdout : (stdout.isBlank() ? stderr : stdout + "\n" + stderr);
             if (code != 0 && !body.isBlank()) {
                 body = body + "\nexit code " + code;
             } else if (code != 0) {
                 body = "exit code " + code;
             }
             return new ToolResult(body, code != 0);
-        } catch (IOException | InterruptedException e) {
-            Thread.currentThread().interrupt();
+        } catch (IOException e) {
             throw new ToolException("could not run command: " + e.getMessage(), e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ToolException("command interrupted", e);
+        }
+    }
+
+    private static String readAll(InputStream stream) {
+        try (stream) {
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return "(failed to read output: " + e.getMessage() + ")";
         }
     }
 }
 ```
+
+Note: `ShellTool` drains stdout/stderr concurrently with `waitFor` (via `CompletableFuture`), so commands producing more than the ~64KB pipe buffer exit normally instead of deadlocking on the timeout. The catch clause re-interrupts the thread only on `InterruptedException`.
 
 - [ ] **Step 4: Write WebFetchTool**
 
@@ -1018,7 +1052,7 @@ import java.time.Duration;
 public final class WebFetchTool implements Tool {
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final long MAX_CHARS = 1_048_576;
+    private static final long MAX_BYTES = 1_048_576;
 
     private final HttpClient httpClient;
     private final long timeoutMillis;
@@ -1046,9 +1080,8 @@ public final class WebFetchTool implements Tool {
     public JsonNode parametersSchema() {
         ObjectNode schema = JSON.createObjectNode();
         schema.put("type", "object");
-        schema.set("properties", JSON.createObjectNode()
-                .set("url", JSON.createObjectNode().put("type", "string")));
-        schema.set("required", JSON.createArrayNode().add("url"));
+        schema.putObject("properties").putObject("url").put("type", "string");
+        schema.putArray("required").add("url");
         return schema;
     }
 
@@ -1066,21 +1099,33 @@ public final class WebFetchTool implements Tool {
         if (!url.startsWith("http://") && !url.startsWith("https://")) {
             throw new ToolException("url must start with http:// or https://");
         }
-        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-                .timeout(Duration.ofMillis(timeoutMillis))
-                .header("User-Agent", "mr-smith")
-                .GET()
-                .build();
+        HttpRequest request;
         try {
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            request = HttpRequest.newBuilder(URI.create(url))
+                    .timeout(Duration.ofMillis(timeoutMillis))
+                    .header("User-Agent", "mr-smith")
+                    .GET()
+                    .build();
+        } catch (IllegalArgumentException e) {
+            throw new ToolException("invalid url: " + url, e);
+        }
+        try {
+            HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
             if (response.statusCode() >= 400) {
                 return new ToolResult("HTTP " + response.statusCode(), true);
             }
-            String body = response.body();
-            if (body.length() > MAX_CHARS) {
-                body = body.substring(0, (int) MAX_CHARS) + "\n[truncated]";
+            try (InputStream body = response.body()) {
+                byte[] bytes = body.readNBytes((int) MAX_BYTES + 1);
+                boolean truncated = bytes.length > MAX_BYTES;
+                if (truncated) {
+                    bytes = Arrays.copyOf(bytes, (int) MAX_BYTES);
+                }
+                String text = new String(bytes, StandardCharsets.UTF_8);
+                if (truncated) {
+                    text = text + "\n[truncated]";
+                }
+                return new ToolResult(text, false);
             }
-            return new ToolResult(body, false);
         } catch (IOException e) {
             return new ToolResult("fetch failed: " + e.getMessage(), true);
         } catch (InterruptedException e) {
@@ -1091,10 +1136,14 @@ public final class WebFetchTool implements Tool {
 }
 ```
 
+Add imports to WebFetchTool: `java.io.InputStream`, `java.nio.charset.StandardCharsets`, `java.util.Arrays`.
+
+Note: `WebFetchTool` reads the response as an InputStream and caps the read at `MAX_BYTES` at the transport level (a huge body is never fully materialized in heap), validates the URL inside the try (malformed URLs become `ToolException`, which the session loop catches), and follows redirects via `HttpClient.Redirect.NORMAL`. Timeout (`HttpTimeoutException`) is an `IOException`, so it surfaces as a friendly error result.
+
 - [ ] **Step 5: Run tests to verify they pass**
 
 Run: `mvn test -Dtest=ShellToolTest,WebFetchToolTest`
-Expected: PASS (4 shell + 4 web_fetch)
+Expected: PASS (5 shell + 5 web_fetch)
 
 - [ ] **Step 6: Commit**
 
