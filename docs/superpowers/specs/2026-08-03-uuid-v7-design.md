@@ -20,8 +20,8 @@ version 7 UUIDs:
 
 - bits 0-47: Unix epoch milliseconds (48 bits)
 - bits 48-51: version field `0111`
-- bits 52-63: variant field `10` (RFC 4122)
-- bits 64-127: 64 random bits (sub-millisecond disambiguation)
+- bits 52-63: rand_a (12 random bits)
+- bits 64-127: 62 random bits plus the 2 variant bits (sub-millisecond disambiguation)
 
 Java 21 has no built-in v7 generator (that arrived in Java 25), so this is a
 ~20-line hand-rolled implementation. No new dependencies.

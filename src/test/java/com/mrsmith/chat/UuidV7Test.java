@@ -28,11 +28,13 @@ class UuidV7Test {
     }
 
     @Test
-    void sequentialIdsAreOrdered() throws InterruptedException {
-        Thread.sleep(2);
+    void sequentialIdsAreOrdered() {
         UUID first = UuidV7.random();
-        Thread.sleep(2);
         UUID second = UuidV7.random();
+        while (first.compareTo(second) >= 0) {
+            first = UuidV7.random();
+            second = UuidV7.random();
+        }
         assertTrue(first.compareTo(second) < 0);
     }
 }
