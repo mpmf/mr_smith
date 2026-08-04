@@ -402,7 +402,7 @@ final class ToolPaths {
             }
             return targetReal;
         } catch (IOException e) {
-            throw new ToolException("could not resolve path: " + e.getMessage());
+            throw new ToolException("could not resolve path: " + e.getMessage(), e);
         }
     }
 }
@@ -471,7 +471,7 @@ public final class ReadFileTool implements Tool {
             }
             return new ToolResult(Files.readString(target), false);
         } catch (IOException e) {
-            throw new ToolException("could not read file: " + e.getMessage());
+            throw new ToolException("could not read file: " + e.getMessage(), e);
         }
     }
 }
@@ -544,7 +544,7 @@ public final class WriteFileTool implements Tool {
             Files.writeString(target, content);
             return new ToolResult("wrote " + root.relativize(target) + " (" + content.length() + " chars)", false);
         } catch (IOException e) {
-            throw new ToolException("could not write file: " + e.getMessage());
+            throw new ToolException("could not write file: " + e.getMessage(), e);
         }
     }
 }
@@ -614,7 +614,7 @@ public final class ListDirTool implements Tool {
                     .collect(Collectors.joining("\n"));
             return new ToolResult(listing.isEmpty() ? "(empty)" : listing, false);
         } catch (IOException e) {
-            throw new ToolException("could not list directory: " + e.getMessage());
+            throw new ToolException("could not list directory: " + e.getMessage(), e);
         }
     }
 }
@@ -689,7 +689,7 @@ public final class GlobTool implements Tool {
                     .toList();
             return new ToolResult(matches.isEmpty() ? "(no matches)" : String.join("\n", matches), false);
         } catch (IOException e) {
-            throw new ToolException("could not glob: " + e.getMessage());
+            throw new ToolException("could not glob: " + e.getMessage(), e);
         }
     }
 }
@@ -936,7 +936,7 @@ public final class ShellTool implements Tool {
             return new ToolResult(body, code != 0);
         } catch (IOException | InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ToolException("could not run command: " + e.getMessage());
+            throw new ToolException("could not run command: " + e.getMessage(), e);
         }
     }
 }
