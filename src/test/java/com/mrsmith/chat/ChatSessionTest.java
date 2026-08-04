@@ -1,5 +1,6 @@
 package com.mrsmith.chat;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.mrsmith.config.AgentCatalog;
 import com.mrsmith.config.AgentConfig;
 import com.mrsmith.config.AppConfig;
@@ -522,6 +523,9 @@ class ChatSessionTest {
         final List<String> assistantThinkings = new ArrayList<>();
         final List<Usage> assistantUsages = new ArrayList<>();
         final List<Boolean> assistantEstimated = new ArrayList<>();
+        final List<String> toolCallIds = new ArrayList<>();
+        final List<String> toolResultIds = new ArrayList<>();
+        final List<String> toolResultContents = new ArrayList<>();
         boolean failStart;
         boolean failAppend;
         int appendAttempts;
@@ -554,6 +558,25 @@ class ChatSessionTest {
             assistantThinkings.add(thinking);
             assistantUsages.add(usage);
             assistantEstimated.add(estimated);
+        }
+
+        @Override
+        public void appendToolCall(UUID sessionId, String id, String name, JsonNode arguments) throws IOException {
+            appendAttempts++;
+            if (failAppend) {
+                throw new IOException("boom");
+            }
+            toolCallIds.add(id);
+        }
+
+        @Override
+        public void appendToolResult(UUID sessionId, String id, String content, boolean error) throws IOException {
+            appendAttempts++;
+            if (failAppend) {
+                throw new IOException("boom");
+            }
+            toolResultIds.add(id);
+            toolResultContents.add(content);
         }
     }
 }

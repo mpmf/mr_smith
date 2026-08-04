@@ -1,5 +1,6 @@
 package com.mrsmith.session;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.mrsmith.provider.Usage;
@@ -54,6 +55,30 @@ public class FileTranscriptWriter implements TranscriptWriter {
             }
         }
         record.put("estimated", estimated);
+        record.put("timestamp", Instant.now().toString());
+        append(sessionId, record);
+    }
+
+    @Override
+    public void appendToolCall(UUID sessionId, String id, String name, JsonNode arguments) throws IOException {
+        ObjectNode record = JSON.createObjectNode();
+        record.put("type", "tool_call");
+        record.put("id", id);
+        record.put("name", name);
+        if (arguments != null) {
+            record.set("arguments", arguments);
+        }
+        record.put("timestamp", Instant.now().toString());
+        append(sessionId, record);
+    }
+
+    @Override
+    public void appendToolResult(UUID sessionId, String id, String content, boolean error) throws IOException {
+        ObjectNode record = JSON.createObjectNode();
+        record.put("type", "tool_result");
+        record.put("id", id);
+        record.put("content", content);
+        record.put("error", error);
         record.put("timestamp", Instant.now().toString());
         append(sessionId, record);
     }

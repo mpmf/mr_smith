@@ -81,4 +81,30 @@ class FileTranscriptWriterTest {
         Path file = tempDir.resolve(id.toString()).resolve("transcript.jsonl");
         assertEquals(2, Files.readAllLines(file).size());
     }
+
+    @Test
+    void appendsToolCallAndToolResultRecords() throws IOException {
+        FileTranscriptWriter writer = new FileTranscriptWriter(tempDir);
+        UUID id = UUID.randomUUID();
+        writer.start(id);
+        writer.appendToolCall(id, "call_1", "shell", JSON.readTree("{\"command\":\"ls\"}"));
+        writer.appendToolResult(id, "call_1", "stdout", false);
+
+        Path file = tempDir.resolve(id.toString()).resolve("transcript.jsonl");
+        List<String> lines = Files.readAllLines(file);
+        assertEquals(2, lines.size());
+
+        JsonNode call = JSON.readTree(lines.get(0));
+        assertEquals("tool_call", call.get("type").asText());
+        assertEquals("call_1", call.get("id").asText());
+        assertEquals("shell", call.get("name").asText());
+        assertEquals("ls", call.get("arguments").get("command").asText());
+        assertTrue(call.hasNonNull("timestamp"));
+
+        JsonNode result = JSON.readTree(lines.get(1));
+        assertEquals("tool_result", result.get("type").asText());
+        assertEquals("call_1", result.get("id").asText());
+        assertEquals("stdout", result.get("content").asText());
+        assertFalse(result.get("error").asBoolean());
+    }
 }
