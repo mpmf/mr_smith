@@ -546,10 +546,12 @@ public final class WriteFileTool implements Tool {
         try {
             target = ToolPaths.requireWithin(root, pathArg);
             Path parent = target.getParent();
-            if (Files.isSymbolicLink(target) || Files.exists(target)) {
-                ToolPaths.requireCanonicalWithin(root, target);
-            } else if (parent != null && Files.exists(parent)) {
-                ToolPaths.requireCanonicalWithin(root, parent);
+            Path ancestor = target;
+            while (ancestor != null && !Files.exists(ancestor) && !Files.isSymbolicLink(ancestor)) {
+                ancestor = ancestor.getParent();
+            }
+            if (ancestor != null) {
+                ToolPaths.requireCanonicalWithin(root, ancestor);
             }
             if (parent != null) {
                 Files.createDirectories(parent);
@@ -565,7 +567,7 @@ public final class WriteFileTool implements Tool {
 }
 ```
 
-Note: `WriteFileTool.parametersSchema` is hoisted onto an `ObjectNode` local because Jackson 2.17's generic `ObjectNode.set(...)` breaks method chaining. The containment logic canonicalizes the target when it exists OR is a symlink (including dangling symlinks, which fail `toRealPath()` and are refused), else the existing parent — preventing symlink escapes outside the working directory root.
+Note: `WriteFileTool.parametersSchema` is hoisted onto an `ObjectNode` local because Jackson 2.17's generic `ObjectNode.set(...)` breaks method chaining. The containment logic walks up from the target to the deepest existing/non-symlink ancestor and canonical-checks it, refusing any symlink (leaf, dangling, or intermediate directory) that resolves outside the working directory root. This prevents writing through symlinks that escape root.
 
 Create `src/main/java/com/mrsmith/tool/ListDirTool.java`:
 
