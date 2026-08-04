@@ -62,10 +62,14 @@ public final class WriteFileTool implements Tool {
         try {
             target = ToolPaths.requireWithin(root, pathArg);
             Path parent = target.getParent();
-            if (parent != null && Files.exists(parent)) {
+            if (Files.exists(target)) {
+                ToolPaths.requireCanonicalWithin(root, target);
+            } else if (parent != null && Files.exists(parent)) {
                 ToolPaths.requireCanonicalWithin(root, parent);
             }
-            Files.createDirectories(parent);
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
             Files.writeString(target, content);
         } catch (ToolException e) {
             return new ToolResult(e.getMessage(), true);

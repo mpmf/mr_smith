@@ -90,6 +90,22 @@ class FileToolsTest {
     }
 
     @Test
+    void writeFileRejectsSymlinkTargetEscape() throws Exception {
+        Path root = Files.createDirectory(tempDir.resolve("root"));
+        Path secret = tempDir.resolve("secret.txt");
+        Files.writeString(secret, "original");
+        try {
+            Files.createSymbolicLink(root.resolve("link.txt"), secret);
+            WriteFileTool tool = new WriteFileTool(root);
+            ToolResult result = tool.execute(JSON.readTree("{\"path\":\"link.txt\",\"content\":\"PWNED\"}"));
+            assertTrue(result.error());
+            assertEquals("original", Files.readString(secret));
+        } catch (UnsupportedOperationException e) {
+            // filesystem without symlink support: skip
+        }
+    }
+
+    @Test
     void missingArgumentThrowsToolException() {
         ReadFileTool tool = new ReadFileTool(tempDir);
         assertThrows(ToolException.class, () -> tool.execute(JSON.readTree("{}")));
