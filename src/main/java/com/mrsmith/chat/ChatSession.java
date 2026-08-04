@@ -110,7 +110,7 @@ public class ChatSession {
     }
 
     private void startNewSession() {
-        UUID id = UUID.randomUUID();
+        UUID id = UuidV7.random();
         try {
             transcripts.start(id);
             currentSessionId = id;
