@@ -49,4 +49,12 @@ class ShellToolTest {
         assertTrue(result.error());
         assertTrue(result.content().contains("timed out"));
     }
+
+    @Test
+    void handlesLargeOutputWithoutDeadlock() throws Exception {
+        ShellTool tool = new ShellTool(tempDir, 5000);
+        ToolResult result = tool.execute(JSON.readTree("{\"command\":\"perl -e 'print \\\"x\\\" x 200000'\"}"));
+        assertFalse(result.error());
+        assertTrue(result.content().contains("x".repeat(200000)));
+    }
 }

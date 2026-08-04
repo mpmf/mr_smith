@@ -5,8 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 public final class ShellTool implements Tool {
@@ -59,23 +61,36 @@ public final class ShellTool implements Tool {
             Process process = new ProcessBuilder("bash", "-c", command)
                     .directory(workDir.toFile())
                     .start();
-            if (!process.waitFor(timeoutMillis, TimeUnit.MILLISECONDS)) {
+            CompletableFuture<String> out = CompletableFuture.supplyAsync(() -> readAll(process.getInputStream()));
+            CompletableFuture<String> err = CompletableFuture.supplyAsync(() -> readAll(process.getErrorStream()));
+            boolean finished = process.waitFor(timeoutMillis, TimeUnit.MILLISECONDS);
+            if (!finished) {
                 process.destroyForcibly();
                 return new ToolResult("shell command timed out after " + timeoutMillis + "ms", true);
             }
-            String out = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            String err = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            String stdout = out.join();
+            String stderr = err.join();
             int code = process.exitValue();
-            String body = code == 0 ? out : (out.isBlank() ? err : out + "\n" + err);
+            String body = code == 0 ? stdout : (stdout.isBlank() ? stderr : stdout + "\n" + stderr);
             if (code != 0 && !body.isBlank()) {
                 body = body + "\nexit code " + code;
             } else if (code != 0) {
                 body = "exit code " + code;
             }
             return new ToolResult(body, code != 0);
-        } catch (IOException | InterruptedException e) {
-            Thread.currentThread().interrupt();
+        } catch (IOException e) {
             throw new ToolException("could not run command: " + e.getMessage(), e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ToolException("command interrupted", e);
+        }
+    }
+
+    private static String readAll(InputStream stream) {
+        try (stream) {
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return "(failed to read output: " + e.getMessage() + ")";
         }
     }
 }

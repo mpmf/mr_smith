@@ -5,16 +5,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Arrays;
 
 public final class WebFetchTool implements Tool {
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final long MAX_CHARS = 1_048_576;
+    private static final long MAX_BYTES = 1_048_576;
 
     private final HttpClient httpClient;
     private final long timeoutMillis;
@@ -61,21 +64,33 @@ public final class WebFetchTool implements Tool {
         if (!url.startsWith("http://") && !url.startsWith("https://")) {
             throw new ToolException("url must start with http:// or https://");
         }
-        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-                .timeout(Duration.ofMillis(timeoutMillis))
-                .header("User-Agent", "mr-smith")
-                .GET()
-                .build();
+        HttpRequest request;
         try {
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            request = HttpRequest.newBuilder(URI.create(url))
+                    .timeout(Duration.ofMillis(timeoutMillis))
+                    .header("User-Agent", "mr-smith")
+                    .GET()
+                    .build();
+        } catch (IllegalArgumentException e) {
+            throw new ToolException("invalid url: " + url, e);
+        }
+        try {
+            HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
             if (response.statusCode() >= 400) {
                 return new ToolResult("HTTP " + response.statusCode(), true);
             }
-            String body = response.body();
-            if (body.length() > MAX_CHARS) {
-                body = body.substring(0, (int) MAX_CHARS) + "\n[truncated]";
+            try (InputStream body = response.body()) {
+                byte[] bytes = body.readNBytes((int) MAX_BYTES + 1);
+                boolean truncated = bytes.length > MAX_BYTES;
+                if (truncated) {
+                    bytes = Arrays.copyOf(bytes, (int) MAX_BYTES);
+                }
+                String text = new String(bytes, StandardCharsets.UTF_8);
+                if (truncated) {
+                    text = text + "\n[truncated]";
+                }
+                return new ToolResult(text, false);
             }
-            return new ToolResult(body, false);
         } catch (IOException e) {
             return new ToolResult("fetch failed: " + e.getMessage(), true);
         } catch (InterruptedException e) {

@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import java.net.http.HttpClient;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WebFetchToolTest {
@@ -65,5 +66,12 @@ class WebFetchToolTest {
         WebFetchTool slowTool = new WebFetchTool(HttpClient.newHttpClient(), 300);
         ToolResult result = slowTool.execute(JSON.readTree("{\"url\":\"" + server.url("/slow") + "\"}"));
         assertTrue(result.error());
+    }
+
+    @Test
+    void malformedUrlThrowsToolException() {
+        WebFetchTool tool = new WebFetchTool(HttpClient.newHttpClient(), 5000);
+        assertThrows(ToolException.class,
+                () -> tool.execute(JSON.readTree("{\"url\":\"http://\"}")));
     }
 }
