@@ -1362,9 +1362,9 @@ Append these tests to `src/test/java/com/mrsmith/provider/SseParserTest.java`:
     @Test
     void accumulatesToolCallArgumentsAcrossChunks() throws Exception {
         String sse = """
-                data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"shell","arguments":"{\\"command\\":\\""}}]}]}
+                data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"shell","arguments":"{\\"command\\":\\""}}]}}]}
 
-                data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"ls\\"}"}}]}]}
+                data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"ls\\"}"}}]}}]}
 
                 data: [DONE]
 
@@ -1380,10 +1380,7 @@ Append these tests to `src/test/java/com/mrsmith/provider/SseParserTest.java`:
     @Test
     void multipleToolCallsByIndex() throws Exception {
         String sse = """
-                data: {"choices":[{"delta":{"tool_calls":[
-                  {"index":0,"id":"c1","function":{"name":"read_file","arguments":"{\\"path\\":\\"a.txt\\"}"}},
-                  {"index":1,"id":"c2","function":{"name":"glob","arguments":"{\\"pattern\\":\\"**/*.java\\"}"}}
-                ]}]}
+                data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"read_file","arguments":"{\\"path\\":\\"a.txt\\"}"}},{"index":1,"id":"c2","function":{"name":"glob","arguments":"{\\"pattern\\":\\"**/*.java\\"}"}}]}}]}
 
                 data: [DONE]
 
@@ -1412,7 +1409,7 @@ Append these tests to `src/test/java/com/mrsmith/provider/SseParserTest.java`:
     @Test
     void ignoresToolCallsWithMalformedArguments() throws Exception {
         String sse = """
-                data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"shell","arguments":"not json"}}]}]}
+                data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"shell","arguments":"not json"}}]}}]}
 
                 data: [DONE]
 
