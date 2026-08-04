@@ -61,12 +61,14 @@ public final class WriteFileTool implements Tool {
         Path target;
         try {
             target = ToolPaths.requireWithin(root, pathArg);
-            Path parent = target.getParent();
-            if (Files.isSymbolicLink(target) || Files.exists(target)) {
-                ToolPaths.requireCanonicalWithin(root, target);
-            } else if (parent != null && Files.exists(parent)) {
-                ToolPaths.requireCanonicalWithin(root, parent);
+            Path ancestor = target;
+            while (ancestor != null && !Files.exists(ancestor) && !Files.isSymbolicLink(ancestor)) {
+                ancestor = ancestor.getParent();
             }
+            if (ancestor != null) {
+                ToolPaths.requireCanonicalWithin(root, ancestor);
+            }
+            Path parent = target.getParent();
             if (parent != null) {
                 Files.createDirectories(parent);
             }

@@ -64,14 +64,27 @@ class FileToolsTest {
     @Test
     void globMatchesRecursively() throws Exception {
         Path root = Files.createDirectory(tempDir.resolve("root"));
-        Files.createDirectory(root.resolve("src"));
+        Files.createDirectories(root.resolve("src/deep"));
         Files.writeString(root.resolve("src/Main.java"), "");
-        Files.writeString(root.resolve("src/Util.java"), "");
+        Files.writeString(root.resolve("src/deep/Util.java"), "");
         GlobTool tool = new GlobTool(root);
         ToolResult result = tool.execute(JSON.readTree("{\"pattern\":\"src/**/*.java\"}"));
         assertFalse(result.error());
         assertTrue(result.content().contains("src/Main.java"));
-        assertTrue(result.content().contains("src/Util.java"));
+        assertTrue(result.content().contains("src/deep/Util.java"));
+    }
+
+    @Test
+    void globSingleStarDoesNotCrossDirectories() throws Exception {
+        Path root = Files.createDirectory(tempDir.resolve("root"));
+        Files.createDirectories(root.resolve("src/deep"));
+        Files.writeString(root.resolve("src/Main.java"), "");
+        Files.writeString(root.resolve("src/deep/Util.java"), "");
+        GlobTool tool = new GlobTool(root);
+        ToolResult result = tool.execute(JSON.readTree("{\"pattern\":\"src/*/*.java\"}"));
+        assertFalse(result.error());
+        assertFalse(result.content().contains("src/Main.java"));
+        assertTrue(result.content().contains("src/deep/Util.java"));
     }
 
     @Test
@@ -116,6 +129,22 @@ class FileToolsTest {
             ToolResult result = tool.execute(JSON.readTree("{\"path\":\"link.txt\",\"content\":\"PWNED\"}"));
             assertTrue(result.error());
             assertFalse(Files.exists(outsideTarget));
+        } catch (UnsupportedOperationException e) {
+            // filesystem without symlink support: skip
+        }
+    }
+
+    @Test
+    void writeFileRejectsIntermediateSymlinkDirEscape() throws Exception {
+        Path root = Files.createDirectory(tempDir.resolve("root"));
+        Path outside = Files.createDirectory(tempDir.resolve("outside"));
+        try {
+            Files.createSymbolicLink(root.resolve("link"), outside);
+            WriteFileTool tool = new WriteFileTool(root);
+            ToolResult result = tool.execute(
+                    JSON.readTree("{\"path\":\"link/deep/file.txt\",\"content\":\"PWNED\"}"));
+            assertTrue(result.error());
+            assertFalse(Files.exists(outside.resolve("deep/file.txt")));
         } catch (UnsupportedOperationException e) {
             // filesystem without symlink support: skip
         }
