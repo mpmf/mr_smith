@@ -1,7 +1,9 @@
 package com.mrsmith.chat;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mrsmith.provider.ChatMessage;
 import com.mrsmith.provider.Role;
+import com.mrsmith.provider.ToolCall;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -11,6 +13,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FullContextBuilderTest {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final FullContextBuilder builder = new FullContextBuilder();
 
@@ -68,5 +72,27 @@ class FullContextBuilderTest {
         builder.appendUser("hello");
         List<ChatMessage> context = builder.messages();
         assertThrows(UnsupportedOperationException.class, () -> context.add(new ChatMessage(Role.USER, "x")));
+    }
+
+    @Test
+    void appendsAssistantToolCalls() throws Exception {
+        FullContextBuilder builder = new FullContextBuilder();
+        builder.start(null);
+        builder.appendAssistantToolCalls(List.of(new ToolCall("c1", "shell", JSON.readTree("{}"))));
+        ChatMessage msg = builder.messages().get(0);
+        assertEquals(Role.ASSISTANT, msg.role());
+        assertEquals(1, msg.toolCalls().size());
+        assertEquals("c1", msg.toolCalls().get(0).id());
+    }
+
+    @Test
+    void appendsToolResult() {
+        FullContextBuilder builder = new FullContextBuilder();
+        builder.start(null);
+        builder.appendToolResult("c1", "42");
+        ChatMessage msg = builder.messages().get(0);
+        assertEquals(Role.TOOL, msg.role());
+        assertEquals("c1", msg.toolCallId());
+        assertEquals("42", msg.content());
     }
 }
