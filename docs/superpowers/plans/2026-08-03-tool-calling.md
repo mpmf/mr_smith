@@ -1418,6 +1418,31 @@ Append these tests to `src/test/java/com/mrsmith/provider/SseParserTest.java`:
         assertEquals(1, result.toolCalls().size());
         assertEquals(0, result.toolCalls().get(0).arguments().size());
     }
+
+    @Test
+    void nonObjectArgumentsFallBackToEmptyObject() throws Exception {
+        String sse = """
+                data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"shell","arguments":"[1,2]"}}]}}]}
+
+                data: [DONE]
+
+                """;
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), s -> { }, s -> { });
+        assertEquals(1, result.toolCalls().size());
+        assertEquals(0, result.toolCalls().get(0).arguments().size());
+    }
+
+    @Test
+    void toolCallWithoutIdIsDropped() throws Exception {
+        String sse = """
+                data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"shell","arguments":"{}"}}]}}]}
+
+                data: [DONE]
+
+                """;
+        SseResult result = SseParser.consume(new BufferedReader(new StringReader(sse)), s -> { }, s -> { });
+        assertEquals(null, result.toolCalls());
+    }
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -1544,9 +1569,12 @@ public final class SseParser {
         }
         List<ToolCall> calls = new ArrayList<>();
         for (ToolCallAccumulator acc : toolCalls.values()) {
+            if (acc.id == null || acc.id.isBlank()) {
+                continue;
+            }
             calls.add(new ToolCall(acc.id, acc.name, parseArguments(acc.arguments.toString())));
         }
-        return calls;
+        return calls.isEmpty() ? null : calls;
     }
 
     private static JsonNode parseArguments(String arguments) {
@@ -1554,7 +1582,8 @@ public final class SseParser {
             return JSON.createObjectNode();
         }
         try {
-            return JSON.readTree(arguments);
+            JsonNode parsed = JSON.readTree(arguments);
+            return parsed.isObject() ? parsed : JSON.createObjectNode();
         } catch (IOException e) {
             return JSON.createObjectNode();
         }
@@ -1601,7 +1630,7 @@ public final class SseParser {
 - [ ] **Step 5: Run tests to verify they pass**
 
 Run: `mvn test -Dtest=SseParserTest`
-Expected: PASS (all existing + 4 new tests)
+Expected: PASS (all existing + 6 new tests)
 
 - [ ] **Step 6: Commit**
 
