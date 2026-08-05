@@ -136,6 +136,20 @@ class ConfigLoaderTest {
         assertEquals(List.of(), catalog.resolve("a").tools());
     }
 
+    @Test
+    void unknownToolNameInConfigFileThrows() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "p", "apiKey": "sk-x", "baseUrl": "https://example.com/v1" } ],
+                  "agents": [ { "name": "a", "provider": "p", "model": "m", "tools": ["nope"] } ],
+                  "defaultAgent": "a"
+                }
+                """);
+        ConfigException e = assertThrows(ConfigException.class,
+                () -> ConfigLoader.load(file, CliConfig.empty(), Map.of()));
+        assertTrue(e.getMessage().contains("unknown tool 'nope'"));
+    }
+
     private Path noFile() {
         return tempDir.resolve("missing.json");
     }

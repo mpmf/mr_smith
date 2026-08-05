@@ -1,13 +1,24 @@
 package com.mrsmith.tool;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 
 public final class ToolRegistry {
+
+    private static final Map<String, Supplier<Tool>> BUILT_INS = new LinkedHashMap<>();
+
+    static {
+        BUILT_INS.put("shell", ShellTool::new);
+        BUILT_INS.put("read_file", ReadFileTool::new);
+        BUILT_INS.put("write_file", WriteFileTool::new);
+        BUILT_INS.put("list_dir", ListDirTool::new);
+        BUILT_INS.put("glob", GlobTool::new);
+        BUILT_INS.put("web_fetch", WebFetchTool::new);
+    }
 
     private final List<Tool> tools;
     private final Map<String, Tool> byName;
@@ -22,23 +33,19 @@ public final class ToolRegistry {
     }
 
     public static ToolRegistry with(List<String> toolNames) {
-        List<Tool> tools = new ArrayList<>();
+        List<Tool> tools = new java.util.ArrayList<>();
         for (String name : toolNames) {
-            switch (name) {
-                case "shell" -> tools.add(new ShellTool());
-                case "read_file" -> tools.add(new ReadFileTool());
-                case "write_file" -> tools.add(new WriteFileTool());
-                case "list_dir" -> tools.add(new ListDirTool());
-                case "glob" -> tools.add(new GlobTool());
-                case "web_fetch" -> tools.add(new WebFetchTool());
-                default -> throw new ToolException("Unknown tool: " + name);
+            Supplier<Tool> factory = BUILT_INS.get(name);
+            if (factory == null) {
+                throw new ToolException("Unknown tool: " + name);
             }
+            tools.add(factory.get());
         }
         return new ToolRegistry(tools);
     }
 
     public static Set<String> builtinNames() {
-        return Set.of("shell", "read_file", "write_file", "list_dir", "glob", "web_fetch");
+        return BUILT_INS.keySet();
     }
 
     public Optional<Tool> find(String name) {
