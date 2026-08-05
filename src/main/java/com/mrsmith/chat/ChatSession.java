@@ -13,6 +13,9 @@ import com.mrsmith.provider.Role;
 import com.mrsmith.provider.ToolCall;
 import com.mrsmith.provider.Usage;
 import com.mrsmith.session.TranscriptWriter;
+import com.mrsmith.skill.Skill;
+import com.mrsmith.skill.SkillCatalog;
+import com.mrsmith.tool.SkillTool;
 import com.mrsmith.tool.Tool;
 import com.mrsmith.tool.ToolException;
 import com.mrsmith.tool.ToolRegistry;
@@ -38,6 +41,7 @@ public class ChatSession {
     private final AgentCatalog agents;
     private final ProviderFactory providerFactory;
     private final ToolRegistryFactory toolRegistryFactory;
+    private final SkillCatalog skills;
     private final String initialAgentName;
 
     private final List<ChatMessage> history = new ArrayList<>();
@@ -52,13 +56,15 @@ public class ChatSession {
 
     public ChatSession(IO io, TranscriptWriter transcripts, ContextBuilder contextBuilder,
                        AgentCatalog agents, ProviderFactory providerFactory,
-                       ToolRegistryFactory toolRegistryFactory, String initialAgentName) {
+                       ToolRegistryFactory toolRegistryFactory, SkillCatalog skills,
+                       String initialAgentName) {
         this.io = io;
         this.transcripts = transcripts;
         this.contextBuilder = contextBuilder;
         this.agents = agents;
         this.providerFactory = providerFactory;
         this.toolRegistryFactory = toolRegistryFactory;
+        this.skills = skills;
         this.initialAgentName = initialAgentName;
     }
 
@@ -210,7 +216,7 @@ public class ChatSession {
     private void applyAgent() {
         config = agents.resolve(currentAgentName);
         provider = providerFactory.create(config);
-        toolRegistry = toolRegistryFactory.create(config, null);
+        toolRegistry = toolRegistryFactory.create(config, skills);
     }
 
     private void startFreshSession() {
@@ -218,8 +224,20 @@ public class ChatSession {
         tracker.reset();
         warned85 = false;
         warned100 = false;
-        contextBuilder.start(config.systemPrompt());
+        contextBuilder.start(composeSystemPrompt(config.systemPrompt()));
+        toolRegistry.resetSession();
         startNewSession();
+    }
+
+    private String composeSystemPrompt(String base) {
+        if (skills.isEmpty()) {
+            return base;
+        }
+        String index = skills.indexText();
+        if (base == null || base.isBlank()) {
+            return index;
+        }
+        return base + "\n\n" + index;
     }
 
     private void startNewSession() {

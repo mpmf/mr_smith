@@ -16,13 +16,16 @@ import com.mrsmith.provider.Role;
 import com.mrsmith.provider.ToolCall;
 import com.mrsmith.provider.Usage;
 import com.mrsmith.session.TranscriptWriter;
+import com.mrsmith.skill.SkillCatalog;
 import com.mrsmith.tool.Tool;
 import com.mrsmith.tool.ToolRegistry;
 import com.mrsmith.tool.ToolRegistryFactory;
 import com.mrsmith.tool.ToolResult;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.Arrays;
@@ -39,6 +42,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ChatSessionTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
+
+    @TempDir
+    Path tempDir;
 
     @Test
     void sendsUserMessageAndStoresReplyInHistory() throws Exception {
@@ -370,7 +376,7 @@ class ChatSessionTest {
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("/agent b", "hello", "/exit"));
         ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
-                catalog, factory, noToolsFactory(), "a");
+                catalog, factory, noToolsFactory(), emptySkills(), "a");
         session.run();
         assertEquals(2, factory.calls);
         assertEquals(2, transcripts.starts.size());
@@ -384,7 +390,7 @@ class ChatSessionTest {
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("/agent nope", "/exit"));
         ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
-                catalog(), factory, noToolsFactory(), "a");
+                catalog(), factory, noToolsFactory(), emptySkills(), "a");
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("Unknown agent: nope")));
         assertEquals(1, factory.calls);
@@ -401,7 +407,7 @@ class ChatSessionTest {
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("/agents", "/exit"));
         ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
-                catalog, new FakeProviderFactory(provider), noToolsFactory(), "a");
+                catalog, new FakeProviderFactory(provider), noToolsFactory(), emptySkills(), "a");
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("a") && l.contains("b")));
     }
@@ -416,7 +422,7 @@ class ChatSessionTest {
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "/exit"));
         ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
-                catalog(), new FakeProviderFactory(toolProvider), registryFactory, "a");
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, emptySkills(), "a");
         session.run();
         assertEquals(2, toolProvider.calls);
         assertEquals(1, readFile.calls);
@@ -439,7 +445,7 @@ class ChatSessionTest {
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "n", "/exit"));
         ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
-                catalog(), new FakeProviderFactory(toolProvider), registryFactory, "a");
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, emptySkills(), "a");
         session.run();
         assertEquals(0, shell.calls);
         List<ChatMessage> secondSend = toolProvider.receivedHistories.get(1);
@@ -458,7 +464,7 @@ class ChatSessionTest {
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "y", "/exit"));
         ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
-                catalog(), new FakeProviderFactory(toolProvider), registryFactory, "a");
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, emptySkills(), "a");
         session.run();
         assertEquals(1, shell.calls);
     }
@@ -472,7 +478,7 @@ class ChatSessionTest {
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "/exit"));
         ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
-                catalog(), new FakeProviderFactory(toolProvider), registryFactory, "a");
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, emptySkills(), "a");
         session.run();
         List<ChatMessage> secondSend = toolProvider.receivedHistories.get(1);
         ChatMessage last = secondSend.get(secondSend.size() - 1);
@@ -490,7 +496,7 @@ class ChatSessionTest {
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "/exit"));
         ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
-                catalog(), new FakeProviderFactory(provider), registryFactory, "a");
+                catalog(), new FakeProviderFactory(provider), registryFactory, emptySkills(), "a");
         session.run();
         assertEquals(10, provider.calls);
         List<ChatMessage> lastSend = provider.receivedHistories.get(provider.receivedHistories.size() - 1);
@@ -508,9 +514,51 @@ class ChatSessionTest {
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "/exit"));
         ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
-                catalog(), new FakeProviderFactory(provider), registryFactory, "a");
+                catalog(), new FakeProviderFactory(provider), registryFactory, emptySkills(), "a");
         session.run();
         assertTrue(provider.receivedTools.get(0).isEmpty());
+    }
+
+    @Test
+    void systemPromptIncludesSkillsIndex() throws Exception {
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/exit"));
+        ChatSession session = session(provider, io, transcripts, catalog("You are helpful", null),
+                skillsCatalog("coding", "Write Java."));
+        session.run();
+        List<ChatMessage> context = provider.receivedHistories.get(0);
+        assertEquals(Role.SYSTEM, context.get(0).role());
+        assertTrue(context.get(0).content().startsWith("You are helpful"));
+        assertTrue(context.get(0).content().contains("Available skills:"));
+        assertTrue(context.get(0).content().contains("coding: Write Java."));
+    }
+
+    @Test
+    void toolsLessAgentStillGetsSkillTool() throws Exception {
+        SkillCatalog skills = skillsCatalog("coding", "Write Java.");
+        ToolRegistryFactory registryFactory = (config, catalog) -> ToolRegistry.with(List.of(), catalog);
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(provider), registryFactory, skills, "a");
+        session.run();
+        assertTrue(provider.receivedTools.get(0).stream().anyMatch(t -> t.name().equals("skill")));
+    }
+
+    @Test
+    void resetClearsLoadedSkills() throws Exception {
+        SkillCatalog skills = skillsCatalog("coding", "Write Java.");
+        ToolRegistryFactory registryFactory = (config, catalog) -> ToolRegistry.with(List.of(), catalog);
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("/skills coding", "/reset", "/skills coding", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(provider), registryFactory, skills, "a");
+        session.run();
+        long loaded = io.lines.stream().filter(l -> l.contains("Loaded skill: coding")).count();
+        assertEquals(2, loaded);
     }
 
     private AgentCatalog catalog() {
@@ -526,12 +574,30 @@ class ChatSessionTest {
 
     private ChatSession session(Provider provider, StubIo io, FakeTranscriptWriter transcripts,
                                 AgentCatalog catalog) {
+        return session(provider, io, transcripts, catalog, emptySkills());
+    }
+
+    private ChatSession session(Provider provider, StubIo io, FakeTranscriptWriter transcripts,
+                                AgentCatalog catalog, SkillCatalog skills) {
         return new ChatSession(io, transcripts, new FullContextBuilder(), catalog,
-                new FakeProviderFactory(provider), noToolsFactory(), "a");
+                new FakeProviderFactory(provider), noToolsFactory(), skills, "a");
     }
 
     private ToolRegistryFactory noToolsFactory() {
         return (config, catalog) -> new ToolRegistry(List.of());
+    }
+
+    private SkillCatalog emptySkills() {
+        return SkillCatalog.discover(Path.of("/nonexistent-project-skills"),
+                Path.of("/nonexistent-global-skills"));
+    }
+
+    private SkillCatalog skillsCatalog(String name, String description) throws IOException {
+        Path dir = tempDir.resolve(name);
+        Files.createDirectories(dir);
+        Files.writeString(dir.resolve("SKILL.md"),
+                "---\nname: " + name + "\ndescription: " + description + "\n---\nbody text");
+        return SkillCatalog.discover(tempDir, tempDir.resolve("nope"));
     }
 
     static class StubIo implements IO {
