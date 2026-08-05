@@ -107,4 +107,17 @@ class FileTranscriptWriterTest {
         assertEquals("stdout", result.get("content").asText());
         assertFalse(result.get("error").asBoolean());
     }
+
+    @Test
+    void appendsSkillLoadRecord() throws IOException {
+        FileTranscriptWriter writer = new FileTranscriptWriter(tempDir);
+        UUID id = UUID.randomUUID();
+        writer.start(id);
+        writer.appendSkillLoad(id, "coding");
+        JsonNode record = JSON.readTree(
+                Files.readString(tempDir.resolve(id.toString()).resolve("transcript.jsonl")));
+        assertEquals("skill_load", record.get("type").asText());
+        assertEquals("coding", record.get("name").asText());
+        assertTrue(record.hasNonNull("timestamp"));
+    }
 }

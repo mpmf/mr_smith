@@ -83,6 +83,15 @@ public class FileTranscriptWriter implements TranscriptWriter {
         append(sessionId, record);
     }
 
+    @Override
+    public void appendSkillLoad(UUID sessionId, String name) throws IOException {
+        ObjectNode record = JSON.createObjectNode();
+        record.put("type", "skill_load");
+        record.put("name", name);
+        record.put("timestamp", Instant.now().toString());
+        append(sessionId, record);
+    }
+
     private void append(UUID sessionId, ObjectNode record) throws IOException {
         String line = JSON.writeValueAsString(record);
         Files.writeString(transcriptFile(sessionId), line + "\n", StandardCharsets.UTF_8,

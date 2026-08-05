@@ -646,6 +646,7 @@ class ChatSessionTest {
         final List<String> toolCallIds = new ArrayList<>();
         final List<String> toolResultIds = new ArrayList<>();
         final List<String> toolResultContents = new ArrayList<>();
+        final List<String> skillLoads = new ArrayList<>();
         boolean failStart;
         boolean failAppend;
         int appendAttempts;
@@ -697,6 +698,15 @@ class ChatSessionTest {
             }
             toolResultIds.add(id);
             toolResultContents.add(content);
+        }
+
+        @Override
+        public void appendSkillLoad(UUID sessionId, String name) throws IOException {
+            appendAttempts++;
+            if (failAppend) {
+                throw new IOException("boom");
+            }
+            skillLoads.add(name);
         }
     }
 

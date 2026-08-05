@@ -18,4 +18,6 @@ public interface TranscriptWriter {
     void appendToolCall(UUID sessionId, String id, String name, JsonNode arguments) throws IOException;
 
     void appendToolResult(UUID sessionId, String id, String content, boolean error) throws IOException;
+
+    void appendSkillLoad(UUID sessionId, String name) throws IOException;
 }
