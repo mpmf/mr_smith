@@ -12,6 +12,7 @@ import com.mrsmith.io.ReplIo;
 import com.mrsmith.provider.OpenAiCompatibleProvider;
 import com.mrsmith.session.FileTranscriptWriter;
 import com.mrsmith.session.TranscriptWriter;
+import com.mrsmith.tool.ToolRegistry;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
@@ -50,7 +51,7 @@ public class ChatCommand implements Callable<Integer> {
         TranscriptWriter transcripts = new FileTranscriptWriter(catalog.sessionsDir());
         ContextBuilder contextBuilder = new FullContextBuilder();
         ChatSession session = new ChatSession(io, transcripts, contextBuilder, catalog,
-                OpenAiCompatibleProvider::new, initialAgent);
+                OpenAiCompatibleProvider::new, config -> ToolRegistry.with(config.tools()), initialAgent);
         try {
             session.run();
         } catch (IOException e) {

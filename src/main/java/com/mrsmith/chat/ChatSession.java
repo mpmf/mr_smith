@@ -1,5 +1,6 @@
 package com.mrsmith.chat;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.mrsmith.config.AgentCatalog;
 import com.mrsmith.config.AppConfig;
 import com.mrsmith.io.IO;
@@ -9,25 +10,34 @@ import com.mrsmith.provider.ProviderException;
 import com.mrsmith.provider.ProviderFactory;
 import com.mrsmith.provider.ProviderResponse;
 import com.mrsmith.provider.Role;
+import com.mrsmith.provider.ToolCall;
 import com.mrsmith.provider.Usage;
 import com.mrsmith.session.TranscriptWriter;
+import com.mrsmith.tool.Tool;
+import com.mrsmith.tool.ToolException;
+import com.mrsmith.tool.ToolRegistry;
+import com.mrsmith.tool.ToolRegistryFactory;
+import com.mrsmith.tool.ToolResult;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 
 public class ChatSession {
 
     private static final int WARN_THRESHOLD_PERCENT = 85;
     private static final int LIMIT_PERCENT = 100;
+    private static final int MAX_TOOL_ROUNDS = 8;
 
     private final IO io;
     private final TranscriptWriter transcripts;
     private final ContextBuilder contextBuilder;
     private final AgentCatalog agents;
     private final ProviderFactory providerFactory;
+    private final ToolRegistryFactory toolRegistryFactory;
     private final String initialAgentName;
 
     private final List<ChatMessage> history = new ArrayList<>();
@@ -38,14 +48,17 @@ public class ChatSession {
     private String currentAgentName;
     private AppConfig config;
     private Provider provider;
+    private ToolRegistry toolRegistry;
 
     public ChatSession(IO io, TranscriptWriter transcripts, ContextBuilder contextBuilder,
-                       AgentCatalog agents, ProviderFactory providerFactory, String initialAgentName) {
+                       AgentCatalog agents, ProviderFactory providerFactory,
+                       ToolRegistryFactory toolRegistryFactory, String initialAgentName) {
         this.io = io;
         this.transcripts = transcripts;
         this.contextBuilder = contextBuilder;
         this.agents = agents;
         this.providerFactory = providerFactory;
+        this.toolRegistryFactory = toolRegistryFactory;
         this.initialAgentName = initialAgentName;
     }
 
@@ -67,14 +80,13 @@ public class ChatSession {
             appendUser(line);
             contextBuilder.appendUser(line);
             try {
-                List<ChatMessage> context = contextBuilder.messages();
-                ProviderResponse response = provider.send(context, List.of(), io::write, io::writeReasoning);
-                history.add(response.message());
-                contextBuilder.appendAssistant(response.message().content());
-                appendAssistant(response.message().content(), response.message().thinking(),
-                        response.usage(), response.usageEstimated());
+                TurnResult turn = runToolLoop();
+                history.add(turn.message());
+                contextBuilder.appendAssistant(turn.message().content());
+                appendAssistant(turn.message().content(), turn.message().thinking(),
+                        turn.usage(), turn.estimated());
                 io.writeLine("");
-                tracker.recordTurn(response.usage(), response.usageEstimated());
+                tracker.recordTurn(turn.usage(), turn.estimated());
                 String usageLine = tracker.lastTurnLine();
                 if (!usageLine.isEmpty()) {
                     io.writeLine(usageLine);
@@ -95,9 +107,108 @@ public class ChatSession {
         }
     }
 
+    private TurnResult runToolLoop() {
+        int prompt = 0;
+        int completion = 0;
+        boolean estimated = false;
+        for (int round = 0; ; round++) {
+            List<ChatMessage> context = contextBuilder.messages();
+            ProviderResponse response = provider.send(context, toolRegistry.tools(),
+                    io::write, io::writeReasoning);
+            prompt += tokens(response.usage().promptTokens());
+            completion += tokens(response.usage().completionTokens());
+            estimated = estimated || response.usageEstimated();
+            ChatMessage message = response.message();
+            List<ToolCall> calls = message.toolCalls();
+            if (calls == null || calls.isEmpty()) {
+                return new TurnResult(message, new Usage(prompt, completion), estimated);
+            }
+            if (round >= MAX_TOOL_ROUNDS) {
+                recordToolCallMessage(message, calls);
+                String limitContent = "Tool round limit (" + MAX_TOOL_ROUNDS + ") reached; answer without more tool calls.";
+                ChatMessage limit = new ChatMessage(Role.TOOL, limitContent, null, null, "__limit__");
+                history.add(limit);
+                contextBuilder.appendToolResult(limit.toolCallId(), limit.content());
+                appendToolResult("__limit__", limitContent, false);
+                response = provider.send(contextBuilder.messages(), toolRegistry.tools(),
+                        io::write, io::writeReasoning);
+                prompt += tokens(response.usage().promptTokens());
+                completion += tokens(response.usage().completionTokens());
+                estimated = estimated || response.usageEstimated();
+                return new TurnResult(response.message(), new Usage(prompt, completion), estimated);
+            }
+            recordToolCallMessage(message, calls);
+            for (ToolCall call : calls) {
+                ToolResult result = executeTool(call);
+                io.writeLine(statusLine(call, result));
+                ChatMessage toolMessage = new ChatMessage(Role.TOOL, result.content(), null, null, call.id());
+                history.add(toolMessage);
+                contextBuilder.appendToolResult(call.id(), result.content());
+                appendToolResult(call.id(), result.content(), result.error());
+            }
+        }
+    }
+
+    private int tokens(Integer value) {
+        return value == null ? 0 : value;
+    }
+
+    private void recordToolCallMessage(ChatMessage message, List<ToolCall> calls) {
+        history.add(message);
+        contextBuilder.appendAssistantToolCalls(calls);
+        for (ToolCall call : calls) {
+            appendToolCall(call);
+        }
+    }
+
+    private ToolResult executeTool(ToolCall call) {
+        Optional<Tool> found = toolRegistry.find(call.name());
+        if (found.isEmpty()) {
+            return new ToolResult("Unknown tool: " + call.name(), true);
+        }
+        Tool tool = found.get();
+        if (!tool.isReadOnly() && !confirm(call, tool)) {
+            return new ToolResult("User declined to run " + call.name() + ".", true);
+        }
+        try {
+            return tool.execute(call.arguments());
+        } catch (ToolException e) {
+            return new ToolResult(e.getMessage(), true);
+        }
+    }
+
+    private boolean confirm(ToolCall call, Tool tool) {
+        io.write("Run " + tool.name() + "(" + describe(call) + ") [y/N]? ");
+        String answer;
+        try {
+            answer = io.readLine();
+        } catch (IOException e) {
+            return false;
+        }
+        return answer != null && (answer.trim().equalsIgnoreCase("y")
+                || answer.trim().equalsIgnoreCase("yes"));
+    }
+
+    private String statusLine(ToolCall call, ToolResult result) {
+        return "tool: " + call.name() + "(" + describe(call) + ") -> "
+                + (result.error() ? "error" : "ok");
+    }
+
+    private String describe(ToolCall call) {
+        JsonNode args = call.arguments();
+        for (String key : List.of("command", "path", "pattern", "url")) {
+            JsonNode value = args != null ? args.get(key) : null;
+            if (value != null && value.isTextual()) {
+                return value.asText();
+            }
+        }
+        return "";
+    }
+
     private void applyAgent() {
         config = agents.resolve(currentAgentName);
         provider = providerFactory.create(config);
+        toolRegistry = toolRegistryFactory.create(config);
     }
 
     private void startFreshSession() {
@@ -152,6 +263,30 @@ public class ChatSession {
         }
         try {
             transcripts.appendAssistant(currentSessionId, content, thinking, usage, estimated);
+        } catch (IOException e) {
+            System.err.println("Warning: could not write session transcript: " + e.getMessage());
+            currentSessionId = null;
+        }
+    }
+
+    private void appendToolCall(ToolCall call) {
+        if (currentSessionId == null) {
+            return;
+        }
+        try {
+            transcripts.appendToolCall(currentSessionId, call.id(), call.name(), call.arguments());
+        } catch (IOException e) {
+            System.err.println("Warning: could not write session transcript: " + e.getMessage());
+            currentSessionId = null;
+        }
+    }
+
+    private void appendToolResult(String id, String content, boolean error) {
+        if (currentSessionId == null) {
+            return;
+        }
+        try {
+            transcripts.appendToolResult(currentSessionId, id, content, error);
         } catch (IOException e) {
             System.err.println("Warning: could not write session transcript: " + e.getMessage());
             currentSessionId = null;
@@ -218,5 +353,8 @@ public class ChatSession {
         }
         report.append(String.format(Locale.US, "%n  history: %d messages", history.size()));
         return report.toString();
+    }
+
+    private record TurnResult(ChatMessage message, Usage usage, boolean estimated) {
     }
 }
