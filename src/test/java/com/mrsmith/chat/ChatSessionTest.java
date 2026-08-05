@@ -1,5 +1,7 @@
 package com.mrsmith.chat;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mrsmith.config.AgentCatalog;
 import com.mrsmith.config.AgentConfig;
 import com.mrsmith.config.AppConfig;
@@ -11,8 +13,13 @@ import com.mrsmith.provider.ProviderException;
 import com.mrsmith.provider.ProviderFactory;
 import com.mrsmith.provider.ProviderResponse;
 import com.mrsmith.provider.Role;
+import com.mrsmith.provider.ToolCall;
 import com.mrsmith.provider.Usage;
 import com.mrsmith.session.TranscriptWriter;
+import com.mrsmith.tool.Tool;
+import com.mrsmith.tool.ToolRegistry;
+import com.mrsmith.tool.ToolRegistryFactory;
+import com.mrsmith.tool.ToolResult;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -30,6 +37,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ChatSessionTest {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     @Test
     void sendsUserMessageAndStoresReplyInHistory() throws Exception {
@@ -84,7 +93,7 @@ class ChatSessionTest {
 
     @Test
     void providerErrorIsShownAndLoopContinues() throws Exception {
-        Provider failing = (history, sink, reasoningSink) -> {
+        Provider failing = (history, tools, sink, reasoningSink) -> {
             throw new ProviderException("HTTP 401: bad key");
         };
         FakeProvider ok = new FakeProvider();
@@ -98,7 +107,7 @@ class ChatSessionTest {
 
     @Test
     void partialContentFromInterruptedStreamIsKeptInHistory() throws Exception {
-        Provider interrupted = (history, sink, reasoningSink) -> {
+        Provider interrupted = (history, tools, sink, reasoningSink) -> {
             sink.accept("partial");
             throw new ProviderException("Stream interrupted", null, "partial");
         };
@@ -115,7 +124,7 @@ class ChatSessionTest {
 
     @Test
     void genericProviderFailureIsShownAndLoopContinues() throws Exception {
-        Provider failing = (history, sink, reasoningSink) -> {
+        Provider failing = (history, tools, sink, reasoningSink) -> {
             throw new IllegalStateException("boom");
         };
         FakeProvider ok = new FakeProvider();
@@ -240,7 +249,7 @@ class ChatSessionTest {
 
     @Test
     void interruptedReasoningPreservesPartialThinking() throws Exception {
-        Provider interrupted = (history, sink, reasoningSink) -> {
+        Provider interrupted = (history, tools, sink, reasoningSink) -> {
             reasoningSink.accept("half");
             throw new ProviderException("Stream interrupted", null, null, "half");
         };
@@ -302,7 +311,7 @@ class ChatSessionTest {
 
     @Test
     void recordsPartialContentOnInterruption() throws Exception {
-        Provider interrupted = (history, sink, reasoningSink) -> {
+        Provider interrupted = (history, tools, sink, reasoningSink) -> {
             sink.accept("partial");
             throw new ProviderException("Stream interrupted", null, "partial");
         };
@@ -361,7 +370,7 @@ class ChatSessionTest {
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("/agent b", "hello", "/exit"));
         ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
-                catalog, factory, "a");
+                catalog, factory, noToolsFactory(), "a");
         session.run();
         assertEquals(2, factory.calls);
         assertEquals(2, transcripts.starts.size());
@@ -375,7 +384,7 @@ class ChatSessionTest {
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("/agent nope", "/exit"));
         ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
-                catalog(), factory, "a");
+                catalog(), factory, noToolsFactory(), "a");
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("Unknown agent: nope")));
         assertEquals(1, factory.calls);
@@ -392,9 +401,116 @@ class ChatSessionTest {
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("/agents", "/exit"));
         ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
-                catalog, new FakeProviderFactory(provider), "a");
+                catalog, new FakeProviderFactory(provider), noToolsFactory(), "a");
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("a") && l.contains("b")));
+    }
+
+    @Test
+    void runsToolLoopAndFeedsResultBack() throws Exception {
+        FakeTool readFile = new FakeTool("read_file", true, new ToolResult("file contents", false));
+        ToolRegistryFactory registryFactory = config -> new ToolRegistry(List.of(readFile));
+        FakeToolProvider toolProvider = new FakeToolProvider(
+                new ToolCall("call_1", "read_file", JSON.readTree("{\"path\":\"a.txt\"}")),
+                "final answer");
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, "a");
+        session.run();
+        assertEquals(2, toolProvider.calls);
+        assertEquals(1, readFile.calls);
+        List<ChatMessage> secondSend = toolProvider.receivedHistories.get(1);
+        assertEquals(Role.TOOL, secondSend.get(secondSend.size() - 1).role());
+        assertEquals("file contents", secondSend.get(secondSend.size() - 1).content());
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("tool: read_file(a.txt) -> ok")));
+        assertEquals(1, transcripts.toolCallIds.size());
+        assertEquals("call_1", transcripts.toolCallIds.get(0));
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("final answer")));
+    }
+
+    @Test
+    void declinesNonReadOnlyTool() throws Exception {
+        FakeTool shell = new FakeTool("shell", false, new ToolResult("ran", false));
+        ToolRegistryFactory registryFactory = config -> new ToolRegistry(List.of(shell));
+        FakeToolProvider toolProvider = new FakeToolProvider(
+                new ToolCall("call_2", "shell", JSON.readTree("{\"command\":\"rm -rf /\"}")),
+                "answer after decline");
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "n", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, "a");
+        session.run();
+        assertEquals(0, shell.calls);
+        List<ChatMessage> secondSend = toolProvider.receivedHistories.get(1);
+        ChatMessage last = secondSend.get(secondSend.size() - 1);
+        assertEquals(Role.TOOL, last.role());
+        assertTrue(last.content().contains("declined"));
+    }
+
+    @Test
+    void confirmsNonReadOnlyToolOnYes() throws Exception {
+        FakeTool shell = new FakeTool("shell", false, new ToolResult("ran", false));
+        ToolRegistryFactory registryFactory = config -> new ToolRegistry(List.of(shell));
+        FakeToolProvider toolProvider = new FakeToolProvider(
+                new ToolCall("call_3", "shell", JSON.readTree("{\"command\":\"echo hi\"}")),
+                "answer");
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "y", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, "a");
+        session.run();
+        assertEquals(1, shell.calls);
+    }
+
+    @Test
+    void unknownToolProducesErrorResult() throws Exception {
+        ToolRegistryFactory registryFactory = config -> new ToolRegistry(List.of());
+        FakeToolProvider toolProvider = new FakeToolProvider(
+                new ToolCall("call_4", "nonexistent", JSON.readTree("{}")),
+                "answer");
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, "a");
+        session.run();
+        List<ChatMessage> secondSend = toolProvider.receivedHistories.get(1);
+        ChatMessage last = secondSend.get(secondSend.size() - 1);
+        assertEquals(Role.TOOL, last.role());
+        assertTrue(last.content().contains("Unknown tool: nonexistent"));
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("tool: nonexistent() -> error")));
+    }
+
+    @Test
+    void stopsAtToolRoundLimit() throws Exception {
+        FakeTool tool = new FakeTool("read_file", true, new ToolResult("data", false));
+        ToolRegistryFactory registryFactory = config -> new ToolRegistry(List.of(tool));
+        FakeToolProvider provider = new FakeToolProvider();
+        provider.alwaysCall("read_file", JSON.readTree("{\"path\":\"a.txt\"}"));
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(provider), registryFactory, "a");
+        session.run();
+        assertEquals(10, provider.calls);
+        List<ChatMessage> lastSend = provider.receivedHistories.get(provider.receivedHistories.size() - 1);
+        ChatMessage last = lastSend.get(lastSend.size() - 1);
+        assertEquals(Role.TOOL, last.role());
+        assertTrue(last.content().contains("round limit"));
+        assertEquals("call_x", last.toolCallId());
+        assertTrue(transcripts.toolResultContents.stream().anyMatch(c -> c.contains("round limit")));
+    }
+
+    @Test
+    void noToolsAgentSendsEmptyToolsList() throws Exception {
+        FakeProvider provider = new FakeProvider();
+        ToolRegistryFactory registryFactory = config -> new ToolRegistry(List.of());
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(provider), registryFactory, "a");
+        session.run();
+        assertTrue(provider.receivedTools.get(0).isEmpty());
     }
 
     private AgentCatalog catalog() {
@@ -411,7 +527,11 @@ class ChatSessionTest {
     private ChatSession session(Provider provider, StubIo io, FakeTranscriptWriter transcripts,
                                 AgentCatalog catalog) {
         return new ChatSession(io, transcripts, new FullContextBuilder(), catalog,
-                new FakeProviderFactory(provider), "a");
+                new FakeProviderFactory(provider), noToolsFactory(), "a");
+    }
+
+    private ToolRegistryFactory noToolsFactory() {
+        return config -> new ToolRegistry(List.of());
     }
 
     static class StubIo implements IO {
@@ -448,6 +568,7 @@ class ChatSessionTest {
         final boolean estimated;
         final String thinking;
         final List<List<ChatMessage>> receivedHistories = new ArrayList<>();
+        final List<List<Tool>> receivedTools = new ArrayList<>();
         int calls = 0;
 
         FakeProvider() {
@@ -465,9 +586,10 @@ class ChatSessionTest {
         }
 
         @Override
-        public ProviderResponse send(List<ChatMessage> history, Consumer<String> tokenSink,
+        public ProviderResponse send(List<ChatMessage> history, List<Tool> tools, Consumer<String> tokenSink,
                                      Consumer<String> reasoningSink) {
             receivedHistories.add(new ArrayList<>(history));
+            receivedTools.add(new ArrayList<>(tools));
             calls++;
             ChatMessage last = history.get(history.size() - 1);
             String reply = last.content() + " response";
@@ -490,12 +612,12 @@ class ChatSessionTest {
         }
 
         @Override
-        public ProviderResponse send(List<ChatMessage> history, Consumer<String> tokenSink,
+        public ProviderResponse send(List<ChatMessage> history, List<Tool> tools, Consumer<String> tokenSink,
                                      Consumer<String> reasoningSink) {
             if (calls++ == 0) {
-                return first.send(history, tokenSink, reasoningSink);
+                return first.send(history, tools, tokenSink, reasoningSink);
             }
-            return then.send(history, tokenSink, reasoningSink);
+            return then.send(history, tools, tokenSink, reasoningSink);
         }
     }
 
@@ -521,6 +643,9 @@ class ChatSessionTest {
         final List<String> assistantThinkings = new ArrayList<>();
         final List<Usage> assistantUsages = new ArrayList<>();
         final List<Boolean> assistantEstimated = new ArrayList<>();
+        final List<String> toolCallIds = new ArrayList<>();
+        final List<String> toolResultIds = new ArrayList<>();
+        final List<String> toolResultContents = new ArrayList<>();
         boolean failStart;
         boolean failAppend;
         int appendAttempts;
@@ -553,6 +678,108 @@ class ChatSessionTest {
             assistantThinkings.add(thinking);
             assistantUsages.add(usage);
             assistantEstimated.add(estimated);
+        }
+
+        @Override
+        public void appendToolCall(UUID sessionId, String id, String name, JsonNode arguments) throws IOException {
+            appendAttempts++;
+            if (failAppend) {
+                throw new IOException("boom");
+            }
+            toolCallIds.add(id);
+        }
+
+        @Override
+        public void appendToolResult(UUID sessionId, String id, String content, boolean error) throws IOException {
+            appendAttempts++;
+            if (failAppend) {
+                throw new IOException("boom");
+            }
+            toolResultIds.add(id);
+            toolResultContents.add(content);
+        }
+    }
+
+    static class FakeTool implements Tool {
+        final String name;
+        final boolean readOnly;
+        final ToolResult result;
+        int calls = 0;
+
+        FakeTool(String name, boolean readOnly, ToolResult result) {
+            this.name = name;
+            this.readOnly = readOnly;
+            this.result = result;
+        }
+
+        @Override
+        public String name() {
+            return name;
+        }
+
+        @Override
+        public String description() {
+            return name;
+        }
+
+        @Override
+        public JsonNode parametersSchema() {
+            return JSON.createObjectNode();
+        }
+
+        @Override
+        public boolean isReadOnly() {
+            return readOnly;
+        }
+
+        @Override
+        public ToolResult execute(JsonNode args) {
+            calls++;
+            return result;
+        }
+    }
+
+    static class FakeToolProvider extends FakeProvider {
+        private ToolCall firstCall;
+        private boolean alwaysCall;
+        private String answer;
+
+        FakeToolProvider(ToolCall firstCall, String answer) {
+            this.firstCall = firstCall;
+            this.answer = answer;
+        }
+
+        FakeToolProvider() {
+        }
+
+        void alwaysCall(String name, JsonNode args) {
+            this.firstCall = new ToolCall("call_x", name, args);
+            this.alwaysCall = true;
+        }
+
+        @Override
+        public ProviderResponse send(List<ChatMessage> history, List<Tool> tools,
+                                     Consumer<String> tokenSink, Consumer<String> reasoningSink) {
+            receivedHistories.add(new ArrayList<>(history));
+            receivedTools.add(new ArrayList<>(tools));
+            calls++;
+            if (alwaysCall && calls < 10) {
+                return new ProviderResponse(
+                        new ChatMessage(Role.ASSISTANT, null, null, List.of(firstCall), null),
+                        turnUsage, estimated);
+            }
+            if (firstCall != null && calls == 1) {
+                return new ProviderResponse(
+                        new ChatMessage(Role.ASSISTANT, null, null, List.of(firstCall), null),
+                        turnUsage, estimated);
+            }
+            ChatMessage last = history.get(history.size() - 1);
+            String reply = answer != null ? answer : last.content() + " response";
+            tokenSink.accept(reply);
+            if (thinking != null) {
+                reasoningSink.accept(thinking);
+            }
+            return new ProviderResponse(new ChatMessage(Role.ASSISTANT, reply, thinking), turnUsage, estimated);
         }
     }
 }

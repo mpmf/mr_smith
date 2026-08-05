@@ -74,10 +74,22 @@ public final class ConfigLoader {
                         node.path("provider").asText(),
                         node.path("model").asText(null),
                         node.path("systemPrompt").asText(null),
-                        node.hasNonNull("maxContextTokens") ? node.get("maxContextTokens").asInt() : null));
+                        node.hasNonNull("maxContextTokens") ? node.get("maxContextTokens").asInt() : null,
+                        parseTools(node)));
             }
         }
         return result;
+    }
+
+    private static List<String> parseTools(JsonNode agentNode) {
+        List<String> tools = new ArrayList<>();
+        JsonNode arr = agentNode.path("tools");
+        if (arr.isArray()) {
+            for (JsonNode tool : arr) {
+                tools.add(tool.asText());
+            }
+        }
+        return tools;
     }
 
     private static String firstNonNull(String... values) {

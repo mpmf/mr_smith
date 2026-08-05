@@ -1,5 +1,6 @@
 package com.mrsmith.session;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.mrsmith.provider.Usage;
 
 import java.io.IOException;
@@ -13,4 +14,8 @@ public interface TranscriptWriter {
 
     void appendAssistant(UUID sessionId, String content, String thinking,
                          Usage usage, boolean estimated) throws IOException;
+
+    void appendToolCall(UUID sessionId, String id, String name, JsonNode arguments) throws IOException;
+
+    void appendToolResult(UUID sessionId, String id, String content, boolean error) throws IOException;
 }

@@ -14,6 +14,11 @@ class RoleTest {
     }
 
     @Test
+    void toolRoleHasApiName() {
+        assertEquals("tool", Role.TOOL.apiName());
+    }
+
+    @Test
     void chatMessageExposesWireFormatRoleName() {
         ChatMessage message = new ChatMessage(Role.USER, "hello");
         assertEquals("user", message.roleName());

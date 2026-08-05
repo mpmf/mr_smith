@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.mrsmith.config.AppConfig;
+import com.mrsmith.tool.Tool;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -40,10 +41,10 @@ public class OpenAiCompatibleProvider implements Provider {
     }
 
     @Override
-    public ProviderResponse send(List<ChatMessage> context, Consumer<String> tokenSink,
-                                 Consumer<String> reasoningSink) {
+    public ProviderResponse send(List<ChatMessage> context, List<Tool> tools,
+                                 Consumer<String> tokenSink, Consumer<String> reasoningSink) {
         try {
-            return doSend(context, tokenSink, reasoningSink);
+            return doSend(context, tools, tokenSink, reasoningSink);
         } catch (ProviderException e) {
             throw e;
         } catch (IOException | InterruptedException e) {
@@ -53,10 +54,10 @@ public class OpenAiCompatibleProvider implements Provider {
         }
     }
 
-    private ProviderResponse doSend(List<ChatMessage> context, Consumer<String> tokenSink,
-                                    Consumer<String> reasoningSink)
+    private ProviderResponse doSend(List<ChatMessage> context, List<Tool> tools,
+                                    Consumer<String> tokenSink, Consumer<String> reasoningSink)
             throws IOException, InterruptedException {
-        HttpRequest request = buildRequest(buildRequestBody(context));
+        HttpRequest request = buildRequest(buildRequestBody(context, tools));
         HttpResponse<InputStream> response = sendWithRetry(request);
         return handleResponse(response, context, tokenSink, reasoningSink);
     }
@@ -100,7 +101,8 @@ public class OpenAiCompatibleProvider implements Provider {
         };
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.body()))) {
             SseResult result = SseParser.consume(reader, sink, reasoning);
-            ChatMessage message = new ChatMessage(Role.ASSISTANT, result.content(), result.thinking());
+            ChatMessage message = new ChatMessage(Role.ASSISTANT, result.content(), result.thinking(),
+                    result.toolCalls(), null);
             Usage usage = result.usage();
             boolean estimated = false;
             if (usage == null) {
@@ -129,25 +131,62 @@ public class OpenAiCompatibleProvider implements Provider {
         return new Usage(prompt, completion);
     }
 
-    private String buildRequestBody(List<ChatMessage> context) {
+    private String buildRequestBody(List<ChatMessage> context, List<Tool> tools) {
         ObjectNode root = JSON.createObjectNode();
         root.put("model", config.model());
         root.put("stream", true);
         if (config.includeUsage()) {
             root.putObject("stream_options").put("include_usage", true);
         }
+        if (tools != null && !tools.isEmpty()) {
+            ArrayNode toolsArray = root.putArray("tools");
+            for (Tool tool : tools) {
+                ObjectNode entry = toolsArray.addObject();
+                entry.put("type", "function");
+                ObjectNode fn = entry.putObject("function");
+                fn.put("name", tool.name());
+                fn.put("description", tool.description());
+                fn.set("parameters", tool.parametersSchema());
+            }
+        }
         ArrayNode messages = root.putArray("messages");
         for (ChatMessage message : context) {
-            String content = message.content() == null ? "" : message.content();
-            messages.addObject()
-                    .put("role", message.roleName())
-                    .put("content", content);
+            messages.add(serializeMessage(message));
         }
         try {
             return JSON.writeValueAsString(root);
         } catch (IOException e) {
             throw new IllegalStateException("Failed to serialize request body", e);
         }
+    }
+
+    private ObjectNode serializeMessage(ChatMessage message) {
+        ObjectNode node = JSON.createObjectNode();
+        node.put("role", message.roleName());
+        if (message.toolCalls() != null && !message.toolCalls().isEmpty()) {
+            node.putNull("content");
+            ArrayNode calls = node.putArray("tool_calls");
+            for (ToolCall call : message.toolCalls()) {
+                ObjectNode entry = calls.addObject();
+                entry.put("id", call.id());
+                entry.put("type", "function");
+                ObjectNode fn = entry.putObject("function");
+                fn.put("name", call.name());
+                fn.put("arguments", call.arguments() == null ? "{}" : call.arguments().toString());
+            }
+            return node;
+        }
+        if (message.role() == Role.TOOL) {
+            if (message.toolCallId() == null) {
+                throw new IllegalArgumentException("Tool result message is missing a tool_call_id");
+            }
+            node.put("tool_call_id", message.toolCallId());
+            node.put("content", message.content() == null ? "" : message.content());
+            return node;
+        }
+        String content = message.content() == null ? "" : message.content();
+        node.put("content", content);
+        return node;
     }
 
     private HttpRequest buildRequest(String body) {

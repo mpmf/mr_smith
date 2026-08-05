@@ -6,6 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -107,6 +108,46 @@ class ConfigLoaderTest {
         AgentCatalog catalog = ConfigLoader.load(file,
                 new CliConfig(null, Path.of("/tmp/cli-sessions")), Map.of());
         assertEquals(Path.of("/tmp/cli-sessions"), catalog.sessionsDir());
+    }
+
+    @Test
+    void parsesPerAgentTools() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "p", "apiKey": "sk-x", "baseUrl": "https://example.com/v1" } ],
+                  "agents": [ { "name": "a", "provider": "p", "model": "m", "tools": ["shell", "read_file"] } ],
+                  "defaultAgent": "a"
+                }
+                """);
+        AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
+        assertEquals(List.of("shell", "read_file"), catalog.resolve("a").tools());
+    }
+
+    @Test
+    void toolsDefaultToEmpty() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "p", "apiKey": "sk-x", "baseUrl": "https://example.com/v1" } ],
+                  "agents": [ { "name": "a", "provider": "p", "model": "m" } ],
+                  "defaultAgent": "a"
+                }
+                """);
+        AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
+        assertEquals(List.of(), catalog.resolve("a").tools());
+    }
+
+    @Test
+    void unknownToolNameInConfigFileThrows() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "p", "apiKey": "sk-x", "baseUrl": "https://example.com/v1" } ],
+                  "agents": [ { "name": "a", "provider": "p", "model": "m", "tools": ["nope"] } ],
+                  "defaultAgent": "a"
+                }
+                """);
+        ConfigException e = assertThrows(ConfigException.class,
+                () -> ConfigLoader.load(file, CliConfig.empty(), Map.of()));
+        assertTrue(e.getMessage().contains("unknown tool 'nope'"));
     }
 
     private Path noFile() {

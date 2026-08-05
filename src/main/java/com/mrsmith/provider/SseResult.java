@@ -1,4 +1,6 @@
 package com.mrsmith.provider;
 
-public record SseResult(String content, String thinking, Usage usage) {
+import java.util.List;
+
+public record SseResult(String content, String thinking, List<ToolCall> toolCalls, Usage usage) {
 }

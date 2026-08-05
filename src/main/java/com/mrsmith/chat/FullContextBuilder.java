@@ -2,6 +2,7 @@ package com.mrsmith.chat;
 
 import com.mrsmith.provider.ChatMessage;
 import com.mrsmith.provider.Role;
+import com.mrsmith.provider.ToolCall;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -26,6 +27,16 @@ public class FullContextBuilder implements ContextBuilder {
     @Override
     public void appendAssistant(String content) {
         context.add(new ChatMessage(Role.ASSISTANT, content));
+    }
+
+    @Override
+    public void appendAssistantToolCalls(List<ToolCall> toolCalls) {
+        context.add(new ChatMessage(Role.ASSISTANT, null, null, List.copyOf(toolCalls), null));
+    }
+
+    @Override
+    public void appendToolResult(String toolCallId, String content) {
+        context.add(new ChatMessage(Role.TOOL, content, null, null, toolCallId));
     }
 
     @Override

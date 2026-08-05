@@ -1,5 +1,7 @@
 package com.mrsmith.config;
 
+import com.mrsmith.tool.ToolRegistry;
+
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,6 +41,11 @@ public class AgentCatalog {
             if (agent.model() == null || agent.model().isBlank()) {
                 throw new ConfigException("Agent '" + agent.name() + "' is missing model.");
             }
+            for (String tool : agent.tools()) {
+                if (!ToolRegistry.builtinNames().contains(tool)) {
+                    throw new ConfigException("Agent '" + agent.name() + "' references unknown tool '" + tool + "'");
+                }
+            }
         }
         if (this.agents.isEmpty()) {
             throw new ConfigException("No agents defined in the config file.");
@@ -58,7 +65,7 @@ public class AgentCatalog {
         }
         ProviderConfig provider = providers.get(agent.provider());
         return new AppConfig(provider.apiKey(), provider.baseUrl(), agent.model(),
-                agent.systemPrompt(), agent.maxContextTokens(), includeUsage, sessionsDir);
+                agent.systemPrompt(), agent.maxContextTokens(), includeUsage, sessionsDir, agent.tools());
     }
 
     public String defaultName() {

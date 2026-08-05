@@ -89,4 +89,24 @@ class AgentCatalogTest {
         AgentCatalog catalog = new AgentCatalog(List.of(provider), List.of(agent), "coder", true, Path.of("/tmp/s"));
         assertTrue(catalog.agentNames().contains("coder"));
     }
+
+    @Test
+    void resolveCarriesToolNames() {
+        AgentConfig withTools = new AgentConfig("coder", "opencode", "model-x", null, null, List.of("shell", "read_file"));
+        AgentCatalog catalog = new AgentCatalog(List.of(provider), List.of(withTools), "coder", true, Path.of("/tmp/s"));
+        assertEquals(List.of("shell", "read_file"), catalog.resolve("coder").tools());
+    }
+
+    @Test
+    void emptyToolsByDefault() {
+        AgentCatalog catalog = new AgentCatalog(List.of(provider), List.of(agent), "coder", true, Path.of("/tmp/s"));
+        assertEquals(List.of(), catalog.resolve("coder").tools());
+    }
+
+    @Test
+    void unknownToolNameThrows() {
+        AgentConfig bad = new AgentConfig("coder", "opencode", "model-x", null, null, List.of("nope"));
+        assertThrows(ConfigException.class,
+                () -> new AgentCatalog(List.of(provider), List.of(bad), "coder", true, Path.of("/tmp/s")));
+    }
 }

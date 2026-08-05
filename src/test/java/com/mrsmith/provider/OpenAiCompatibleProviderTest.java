@@ -1,6 +1,10 @@
 package com.mrsmith.provider;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mrsmith.config.AppConfig;
+import com.mrsmith.tool.Tool;
+import com.mrsmith.tool.ToolResult;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -52,7 +56,7 @@ class OpenAiCompatibleProviderTest {
 
                         """));
         List<String> deltas = new ArrayList<>();
-        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hello")), deltas::add, s -> { });
+        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hello")), List.of(), deltas::add, s -> { });
         assertEquals("Hi there", response.message().content());
         assertEquals(List.of("Hi", " there"), deltas);
         assertNotNull(response.usage());
@@ -62,7 +66,7 @@ class OpenAiCompatibleProviderTest {
     @Test
     void sendsCorrectRequestBodyAndAuth() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));
-        provider.send(List.of(new ChatMessage(Role.USER, "hello")), s -> { }, s -> { });
+        provider.send(List.of(new ChatMessage(Role.USER, "hello")), List.of(), s -> { }, s -> { });
         RecordedRequest request = server.takeRequest();
         assertEquals("Bearer sk-test", request.getHeader("Authorization"));
         assertEquals("/chat/completions", request.getPath());
@@ -80,7 +84,7 @@ class OpenAiCompatibleProviderTest {
         List<ChatMessage> context = List.of(
                 new ChatMessage(Role.SYSTEM, "You are helpful"),
                 new ChatMessage(Role.USER, "hello"));
-        provider.send(context, s -> { }, s -> { });
+        provider.send(context, List.of(), s -> { }, s -> { });
         RecordedRequest request = server.takeRequest();
         String body = request.getBody().readUtf8();
         assertTrue(body.contains("\"role\":\"system\""));
@@ -91,7 +95,7 @@ class OpenAiCompatibleProviderTest {
     void throwsOn4xx() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(401).setBody("{\"error\":\"invalid key\"}"));
         ProviderException e = assertThrows(ProviderException.class,
-                () -> provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { }, s -> { }));
+                () -> provider.send(List.of(new ChatMessage(Role.USER, "hi")), List.of(), s -> { }, s -> { }));
         assertTrue(e.getMessage().contains("401"));
     }
 
@@ -102,7 +106,7 @@ class OpenAiCompatibleProviderTest {
                 .setHeader("Content-Type", "text/event-stream")
                 .setBody("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"));
         List<String> deltas = new ArrayList<>();
-        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), deltas::add, s -> { });
+        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), List.of(), deltas::add, s -> { });
         assertEquals("ok", response.message().content());
         assertEquals(2, server.getRequestCount());
     }
@@ -112,7 +116,7 @@ class OpenAiCompatibleProviderTest {
         server.enqueue(new MockResponse().setResponseCode(500).setBody("boom"));
         server.enqueue(new MockResponse().setResponseCode(502).setBody("boom2"));
         ProviderException e = assertThrows(ProviderException.class,
-                () -> provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { }, s -> { }));
+                () -> provider.send(List.of(new ChatMessage(Role.USER, "hi")), List.of(), s -> { }, s -> { }));
         assertTrue(e.getMessage().contains("502"));
         assertEquals(2, server.getRequestCount());
     }
@@ -133,7 +137,7 @@ class OpenAiCompatibleProviderTest {
                         """));
         List<String> deltas = new ArrayList<>();
         ProviderException e = assertThrows(ProviderException.class,
-                () -> provider.send(List.of(new ChatMessage(Role.USER, "hi")), deltas::add, s -> { }));
+                () -> provider.send(List.of(new ChatMessage(Role.USER, "hi")), List.of(), deltas::add, s -> { }));
         assertTrue(e.hasPartialContent());
         assertEquals(String.join("", deltas), e.partialContent());
         assertTrue(e.getMessage().contains("interrupted"));
@@ -157,7 +161,7 @@ class OpenAiCompatibleProviderTest {
                         """));
         List<String> reasoning = new ArrayList<>();
         ProviderException e = assertThrows(ProviderException.class,
-                () -> provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { }, reasoning::add));
+                () -> provider.send(List.of(new ChatMessage(Role.USER, "hi")), List.of(), s -> { }, reasoning::add));
         assertNotNull(e.partialThinking());
         assertEquals(String.join("", reasoning), e.partialThinking());
     }
@@ -169,7 +173,7 @@ class OpenAiCompatibleProviderTest {
                 .setHeader("Content-Type", "text/event-stream")
                 .setBody("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"));
         List<String> deltas = new ArrayList<>();
-        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), deltas::add, s -> { });
+        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), List.of(), deltas::add, s -> { });
         assertEquals("ok", response.message().content());
         assertEquals(2, server.getRequestCount());
     }
@@ -186,7 +190,7 @@ class OpenAiCompatibleProviderTest {
                         data: [DONE]
 
                         """));
-        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { }, s -> { });
+        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), List.of(), s -> { }, s -> { });
         assertEquals("ok", response.message().content());
         assertEquals(new Usage(1200, 300), response.usage());
         assertFalse(response.usageEstimated());
@@ -197,7 +201,7 @@ class OpenAiCompatibleProviderTest {
         server.enqueue(new MockResponse().setResponseCode(200)
                 .setHeader("Content-Type", "text/event-stream")
                 .setBody("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"));
-        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { }, s -> { });
+        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), List.of(), s -> { }, s -> { });
         assertTrue(response.usageEstimated());
         assertEquals(1, response.usage().promptTokens());
         assertEquals(1, response.usage().completionTokens());
@@ -211,7 +215,7 @@ class OpenAiCompatibleProviderTest {
         AppConfig config = new AppConfig("sk-test", server.url("/").toString(), "test-model", null, null, false);
         provider = new OpenAiCompatibleProvider(config, HttpClient.newHttpClient(), 0L);
         server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));
-        provider.send(List.of(new ChatMessage(Role.USER, "hello")), s -> { }, s -> { });
+        provider.send(List.of(new ChatMessage(Role.USER, "hello")), List.of(), s -> { }, s -> { });
         RecordedRequest request = server.takeRequest();
         assertFalse(request.getBody().readUtf8().contains("stream_options"));
     }
@@ -230,7 +234,7 @@ class OpenAiCompatibleProviderTest {
                         """));
         List<String> content = new ArrayList<>();
         List<String> reasoning = new ArrayList<>();
-        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), content::add, reasoning::add);
+        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), List.of(), content::add, reasoning::add);
         assertEquals(List.of("think"), reasoning);
         assertEquals("ok", response.message().content());
         assertEquals("think", response.message().thinking());
@@ -243,7 +247,7 @@ class OpenAiCompatibleProviderTest {
         server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));
         List<ChatMessage> history = new ArrayList<>();
         history.add(new ChatMessage(Role.USER, "first"));
-        ProviderResponse first = provider.send(history, s -> { }, s -> { });
+        ProviderResponse first = provider.send(history, List.of(), s -> { }, s -> { });
         assertEquals("secret thinking", first.message().thinking());
         RecordedRequest firstRequest = server.takeRequest();
         String firstBody = firstRequest.getBody().readUtf8();
@@ -251,7 +255,7 @@ class OpenAiCompatibleProviderTest {
         assertFalse(firstBody.contains("secret thinking"));
         history.add(first.message());
         history.add(new ChatMessage(Role.USER, "second"));
-        provider.send(history, s -> { }, s -> { });
+        provider.send(history, List.of(), s -> { }, s -> { });
         RecordedRequest secondRequest = server.takeRequest();
         String secondBody = secondRequest.getBody().readUtf8();
         assertTrue(secondBody.contains("\"content\":\"hello\""));
@@ -270,7 +274,7 @@ class OpenAiCompatibleProviderTest {
                         data: [DONE]
 
                         """));
-        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), s -> { }, s -> { });
+        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), List.of(), s -> { }, s -> { });
         assertTrue(response.usageEstimated());
         assertEquals(3, response.usage().completionTokens());
     }
@@ -279,8 +283,116 @@ class OpenAiCompatibleProviderTest {
     void coercesNullContentToEmptyString() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));
         List<ChatMessage> context = List.of(new ChatMessage(Role.ASSISTANT, null, "think"));
-        provider.send(context, s -> { }, s -> { });
+        provider.send(context, List.of(), s -> { }, s -> { });
         RecordedRequest request = server.takeRequest();
         assertTrue(request.getBody().readUtf8().contains("\"content\":\"\""));
+    }
+
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    static class StubTool implements Tool {
+        private final String name;
+        private final JsonNode schema;
+
+        StubTool(String name) {
+            this(name, JSON.createObjectNode());
+        }
+
+        StubTool(String name, JsonNode schema) {
+            this.name = name;
+            this.schema = schema;
+        }
+
+        @Override
+        public String name() {
+            return name;
+        }
+
+        @Override
+        public String description() {
+            return name + " description";
+        }
+
+        @Override
+        public JsonNode parametersSchema() {
+            return schema;
+        }
+
+        @Override
+        public boolean isReadOnly() {
+            return true;
+        }
+
+        @Override
+        public ToolResult execute(JsonNode args) {
+            return new ToolResult("ok", false);
+        }
+    }
+
+    @Test
+    void includesToolsArrayInRequest() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));
+        JsonNode schema = JSON.readTree("{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\"}}}");
+        provider.send(List.of(new ChatMessage(Role.USER, "hi")), List.of(new StubTool("shell", schema)),
+                s -> { }, s -> { });
+        RecordedRequest request = server.takeRequest();
+        String body = request.getBody().readUtf8();
+        assertTrue(body.contains("\"tools\":["));
+        assertTrue(body.contains("\"type\":\"function\""));
+        assertTrue(body.contains("\"name\":\"shell\""));
+        assertTrue(body.contains("\"description\":\"shell description\""));
+        assertTrue(body.contains("\"parameters\":{\"type\":\"object\""));
+    }
+
+    @Test
+    void omitsToolsArrayWhenEmpty() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));
+        provider.send(List.of(new ChatMessage(Role.USER, "hi")), List.of(), s -> { }, s -> { });
+        RecordedRequest request = server.takeRequest();
+        assertFalse(request.getBody().readUtf8().contains("\"tools\""));
+    }
+
+    @Test
+    void serializesAssistantToolCallsMessage() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));
+        JsonNode args = JSON.readTree("{\"command\":\"ls\"}");
+        ChatMessage assistant = new ChatMessage(Role.ASSISTANT, null, null,
+                List.of(new ToolCall("call_1", "shell", args)), null);
+        provider.send(List.of(assistant), List.of(), s -> { }, s -> { });
+        RecordedRequest request = server.takeRequest();
+        String body = request.getBody().readUtf8();
+        assertTrue(body.contains("\"tool_calls\":[{"));
+        assertTrue(body.contains("\"id\":\"call_1\""));
+        assertTrue(body.contains("\"function\":{\"name\":\"shell\",\"arguments\":\"{\\\"command\\\":\\\"ls\\\"}\"}"));
+        assertTrue(body.contains("\"content\":null"));
+    }
+
+    @Test
+    void serializesToolResultMessage() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));
+        ChatMessage toolResult = new ChatMessage(Role.TOOL, "42", null, null, "call_1");
+        provider.send(List.of(toolResult), List.of(), s -> { }, s -> { });
+        RecordedRequest request = server.takeRequest();
+        String body = request.getBody().readUtf8();
+        assertTrue(body.contains("\"role\":\"tool\""));
+        assertTrue(body.contains("\"tool_call_id\":\"call_1\""));
+        assertTrue(body.contains("\"content\":\"42\""));
+    }
+
+    @Test
+    void surfacesToolCallsFromSseResponse() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("""
+                        data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_9","function":{"name":"shell","arguments":"{\\"command\\":\\"ls\\"}"}}]}}]}
+
+                        data: [DONE]
+
+                        """));
+        ProviderResponse response = provider.send(List.of(new ChatMessage(Role.USER, "hi")), List.of(),
+                s -> { }, s -> { });
+        assertEquals(1, response.message().toolCalls().size());
+        assertEquals("call_9", response.message().toolCalls().get(0).id());
+        assertEquals("shell", response.message().toolCalls().get(0).name());
     }
 }
