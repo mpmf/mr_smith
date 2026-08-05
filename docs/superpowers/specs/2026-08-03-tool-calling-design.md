@@ -167,8 +167,9 @@ loop:
   if message.toolCalls() empty:
       final = message; break
   if rounds >= 8:
-      context += ChatMessage(TOOL, "Tool round limit (8) reached; "
-          + "answer without more tool calls.", toolCallId = "<limit>")
+      for each call in message.toolCalls():
+          context += ChatMessage(TOOL, "Tool round limit (8) reached; "
+              + "answer without more tool calls.", toolCallId = call.id())
       response = provider.send(context, registry.tools(), io::write, io::writeReasoning)
       final = response.message()          // reply text used; any tool calls dropped
       break
@@ -188,9 +189,11 @@ loop:
   // loop back; the model may call again or answer
 ```
 
-The round-limit branch sends one final message asking the model to answer
-without further tool calls, sends it once more, and uses that reply as final
-(dropping any tool calls in it). This guarantees the loop always terminates.
+The round-limit branch appends a `TOOL` result for each pending call (using its
+real `tool_call_id`, which strict providers require to reference a prior
+assistant tool_call), sends one final message asking the model to answer without
+further tool calls, and uses that reply as final (dropping any tool calls in
+it). This guarantees the loop always terminates.
 
 Final answer handling (history, `contextBuilder.appendAssistant`,
 `appendAssistant` transcript, usage line, warnings) is unchanged.
