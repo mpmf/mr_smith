@@ -17,5 +17,7 @@ public interface ContextBuilder {
 
     void appendToolResult(String toolCallId, String content);
 
+    void appendSystem(String content);
+
     List<ChatMessage> messages();
 }

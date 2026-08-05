@@ -40,6 +40,11 @@ public class FullContextBuilder implements ContextBuilder {
     }
 
     @Override
+    public void appendSystem(String content) {
+        context.add(new ChatMessage(Role.SYSTEM, content));
+    }
+
+    @Override
     public List<ChatMessage> messages() {
         return List.copyOf(context);
     }

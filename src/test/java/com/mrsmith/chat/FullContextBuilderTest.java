@@ -95,4 +95,16 @@ class FullContextBuilderTest {
         assertEquals("c1", msg.toolCallId());
         assertEquals("42", msg.content());
     }
+
+    @Test
+    void appendSystemAppendsSystemMessage() {
+        FullContextBuilder builder = new FullContextBuilder();
+        builder.start("base");
+        builder.appendUser("hello");
+        builder.appendSystem("Available skills:\n- coding: x");
+        List<ChatMessage> context = builder.messages();
+        assertEquals(3, context.size());
+        assertEquals(Role.SYSTEM, context.get(2).role());
+        assertEquals("Available skills:\n- coding: x", context.get(2).content());
+    }
 }
