@@ -210,7 +210,7 @@ public class ChatSession {
     private void applyAgent() {
         config = agents.resolve(currentAgentName);
         provider = providerFactory.create(config);
-        toolRegistry = toolRegistryFactory.create(config);
+        toolRegistry = toolRegistryFactory.create(config, null);
     }
 
     private void startFreshSession() {

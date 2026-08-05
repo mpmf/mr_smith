@@ -1,5 +1,8 @@
 package com.mrsmith.tool;
 
+import com.mrsmith.skill.SkillCatalog;
+
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,14 +35,17 @@ public final class ToolRegistry {
         this.byName = Map.copyOf(index);
     }
 
-    public static ToolRegistry with(List<String> toolNames) {
-        List<Tool> tools = new java.util.ArrayList<>();
+    public static ToolRegistry with(List<String> toolNames, SkillCatalog catalog) {
+        List<Tool> tools = new ArrayList<>();
         for (String name : toolNames) {
             Supplier<Tool> factory = BUILT_INS.get(name);
             if (factory == null) {
                 throw new ToolException("Unknown tool: " + name);
             }
             tools.add(factory.get());
+        }
+        if (catalog != null && !catalog.isEmpty()) {
+            tools.add(new SkillTool(catalog));
         }
         return new ToolRegistry(tools);
     }
@@ -58,5 +64,13 @@ public final class ToolRegistry {
 
     public boolean isEmpty() {
         return tools.isEmpty();
+    }
+
+    public void resetSession() {
+        for (Tool tool : tools) {
+            if (tool instanceof Resettable resettable) {
+                resettable.reset();
+            }
+        }
     }
 }

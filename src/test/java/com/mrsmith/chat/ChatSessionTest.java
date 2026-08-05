@@ -409,7 +409,7 @@ class ChatSessionTest {
     @Test
     void runsToolLoopAndFeedsResultBack() throws Exception {
         FakeTool readFile = new FakeTool("read_file", true, new ToolResult("file contents", false));
-        ToolRegistryFactory registryFactory = config -> new ToolRegistry(List.of(readFile));
+        ToolRegistryFactory registryFactory = (config, catalog) -> new ToolRegistry(List.of(readFile));
         FakeToolProvider toolProvider = new FakeToolProvider(
                 new ToolCall("call_1", "read_file", JSON.readTree("{\"path\":\"a.txt\"}")),
                 "final answer");
@@ -432,7 +432,7 @@ class ChatSessionTest {
     @Test
     void declinesNonReadOnlyTool() throws Exception {
         FakeTool shell = new FakeTool("shell", false, new ToolResult("ran", false));
-        ToolRegistryFactory registryFactory = config -> new ToolRegistry(List.of(shell));
+        ToolRegistryFactory registryFactory = (config, catalog) -> new ToolRegistry(List.of(shell));
         FakeToolProvider toolProvider = new FakeToolProvider(
                 new ToolCall("call_2", "shell", JSON.readTree("{\"command\":\"rm -rf /\"}")),
                 "answer after decline");
@@ -451,7 +451,7 @@ class ChatSessionTest {
     @Test
     void confirmsNonReadOnlyToolOnYes() throws Exception {
         FakeTool shell = new FakeTool("shell", false, new ToolResult("ran", false));
-        ToolRegistryFactory registryFactory = config -> new ToolRegistry(List.of(shell));
+        ToolRegistryFactory registryFactory = (config, catalog) -> new ToolRegistry(List.of(shell));
         FakeToolProvider toolProvider = new FakeToolProvider(
                 new ToolCall("call_3", "shell", JSON.readTree("{\"command\":\"echo hi\"}")),
                 "answer");
@@ -465,7 +465,7 @@ class ChatSessionTest {
 
     @Test
     void unknownToolProducesErrorResult() throws Exception {
-        ToolRegistryFactory registryFactory = config -> new ToolRegistry(List.of());
+        ToolRegistryFactory registryFactory = (config, catalog) -> new ToolRegistry(List.of());
         FakeToolProvider toolProvider = new FakeToolProvider(
                 new ToolCall("call_4", "nonexistent", JSON.readTree("{}")),
                 "answer");
@@ -484,7 +484,7 @@ class ChatSessionTest {
     @Test
     void stopsAtToolRoundLimit() throws Exception {
         FakeTool tool = new FakeTool("read_file", true, new ToolResult("data", false));
-        ToolRegistryFactory registryFactory = config -> new ToolRegistry(List.of(tool));
+        ToolRegistryFactory registryFactory = (config, catalog) -> new ToolRegistry(List.of(tool));
         FakeToolProvider provider = new FakeToolProvider();
         provider.alwaysCall("read_file", JSON.readTree("{\"path\":\"a.txt\"}"));
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
@@ -504,7 +504,7 @@ class ChatSessionTest {
     @Test
     void noToolsAgentSendsEmptyToolsList() throws Exception {
         FakeProvider provider = new FakeProvider();
-        ToolRegistryFactory registryFactory = config -> new ToolRegistry(List.of());
+        ToolRegistryFactory registryFactory = (config, catalog) -> new ToolRegistry(List.of());
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "/exit"));
         ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
@@ -531,7 +531,7 @@ class ChatSessionTest {
     }
 
     private ToolRegistryFactory noToolsFactory() {
-        return config -> new ToolRegistry(List.of());
+        return (config, catalog) -> new ToolRegistry(List.of());
     }
 
     static class StubIo implements IO {
