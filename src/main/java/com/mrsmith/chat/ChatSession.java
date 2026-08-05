@@ -108,45 +108,40 @@ public class ChatSession {
     }
 
     private TurnResult runToolLoop() {
-        int prompt = 0;
-        int completion = 0;
-        boolean estimated = false;
+        Accumulator acc = new Accumulator();
         for (int round = 0; ; round++) {
             List<ChatMessage> context = contextBuilder.messages();
             ProviderResponse response = provider.send(context, toolRegistry.tools(),
                     io::write, io::writeReasoning);
-            prompt += tokens(response.usage().promptTokens());
-            completion += tokens(response.usage().completionTokens());
-            estimated = estimated || response.usageEstimated();
+            recordSend(response, acc);
             ChatMessage message = response.message();
             List<ToolCall> calls = message.toolCalls();
             if (calls == null || calls.isEmpty()) {
-                return new TurnResult(message, new Usage(prompt, completion), estimated);
-            }
-            if (round >= MAX_TOOL_ROUNDS) {
-                recordToolCallMessage(message, calls);
-                String limitContent = "Tool round limit (" + MAX_TOOL_ROUNDS + ") reached; answer without more tool calls.";
-                ChatMessage limit = new ChatMessage(Role.TOOL, limitContent, null, null, "__limit__");
-                history.add(limit);
-                contextBuilder.appendToolResult(limit.toolCallId(), limit.content());
-                appendToolResult("__limit__", limitContent, false);
-                response = provider.send(contextBuilder.messages(), toolRegistry.tools(),
-                        io::write, io::writeReasoning);
-                prompt += tokens(response.usage().promptTokens());
-                completion += tokens(response.usage().completionTokens());
-                estimated = estimated || response.usageEstimated();
-                return new TurnResult(response.message(), new Usage(prompt, completion), estimated);
+                return new TurnResult(message, new Usage(acc.prompt, acc.completion), acc.estimated);
             }
             recordToolCallMessage(message, calls);
+            if (round >= MAX_TOOL_ROUNDS) {
+                String limitContent = "Tool round limit (" + MAX_TOOL_ROUNDS + ") reached; answer without more tool calls.";
+                for (ToolCall call : calls) {
+                    appendToolResultMessage(call.id(), limitContent, false);
+                }
+                response = provider.send(contextBuilder.messages(), toolRegistry.tools(),
+                        io::write, io::writeReasoning);
+                recordSend(response, acc);
+                return new TurnResult(response.message(), new Usage(acc.prompt, acc.completion), acc.estimated);
+            }
             for (ToolCall call : calls) {
                 ToolResult result = executeTool(call);
                 io.writeLine(statusLine(call, result));
-                ChatMessage toolMessage = new ChatMessage(Role.TOOL, result.content(), null, null, call.id());
-                history.add(toolMessage);
-                contextBuilder.appendToolResult(call.id(), result.content());
-                appendToolResult(call.id(), result.content(), result.error());
+                appendToolResultMessage(call.id(), result.content(), result.error());
             }
         }
+    }
+
+    private void recordSend(ProviderResponse response, Accumulator acc) {
+        acc.prompt += tokens(response.usage().promptTokens());
+        acc.completion += tokens(response.usage().completionTokens());
+        acc.estimated = acc.estimated || response.usageEstimated();
     }
 
     private int tokens(Integer value) {
@@ -159,6 +154,13 @@ public class ChatSession {
         for (ToolCall call : calls) {
             appendToolCall(call);
         }
+    }
+
+    private void appendToolResultMessage(String id, String content, boolean error) {
+        ChatMessage message = new ChatMessage(Role.TOOL, content, null, null, id);
+        history.add(message);
+        contextBuilder.appendToolResult(id, content);
+        appendToolResult(id, content, error);
     }
 
     private ToolResult executeTool(ToolCall call) {
@@ -356,5 +358,11 @@ public class ChatSession {
     }
 
     private record TurnResult(ChatMessage message, Usage usage, boolean estimated) {
+    }
+
+    private static final class Accumulator {
+        int prompt;
+        int completion;
+        boolean estimated;
     }
 }

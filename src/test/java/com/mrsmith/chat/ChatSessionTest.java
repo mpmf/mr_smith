@@ -497,6 +497,8 @@ class ChatSessionTest {
         ChatMessage last = lastSend.get(lastSend.size() - 1);
         assertEquals(Role.TOOL, last.role());
         assertTrue(last.content().contains("round limit"));
+        assertEquals("call_x", last.toolCallId());
+        assertTrue(transcripts.toolResultContents.stream().anyMatch(c -> c.contains("round limit")));
     }
 
     @Test
