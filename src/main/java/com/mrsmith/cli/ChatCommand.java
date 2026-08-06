@@ -51,11 +51,13 @@ public class ChatCommand implements Callable<Integer> {
         IO io = new ReplIo();
         TranscriptWriter transcripts = new FileTranscriptWriter(catalog.sessionsDir());
         ContextBuilder contextBuilder = new FullContextBuilder();
+        SkillCatalog skills = SkillCatalog.discover(
+                Path.of(System.getProperty("user.dir"), "skills"),
+                Path.of(System.getProperty("user.home"), ".config", "mrsmith", "skills"));
         ChatSession session = new ChatSession(io, transcripts, contextBuilder, catalog,
                 OpenAiCompatibleProvider::new,
                 (config, skillCatalog) -> ToolRegistry.with(config.tools(), skillCatalog),
-                SkillCatalog.discover(Path.of("/nonexistent"), Path.of("/nonexistent")),
-                initialAgent);
+                skills, initialAgent);
         try {
             session.run();
         } catch (IOException e) {
