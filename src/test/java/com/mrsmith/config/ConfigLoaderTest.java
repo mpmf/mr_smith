@@ -150,6 +150,53 @@ class ConfigLoaderTest {
         assertTrue(e.getMessage().contains("unknown tool 'nope'"));
     }
 
+    @Test
+    void resolvesConfiguredSkillDirsAgainstAnchors() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "p", "apiKey": "sk-x", "baseUrl": "https://example.com/v1" } ],
+                  "agents": [ { "name": "a", "provider": "p", "model": "m" } ],
+                  "defaultAgent": "a",
+                  "projectSkillsDir": "custom/skills",
+                  "globalSkillsDir": "mr-skills"
+                }
+                """);
+        AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
+        assertEquals(Path.of(System.getProperty("user.dir"), "custom", "skills"), catalog.projectSkillsDir());
+        assertEquals(Path.of(System.getProperty("user.home"), "mr-skills"), catalog.globalSkillsDir());
+    }
+
+    @Test
+    void absoluteSkillDirsUsedAsIs() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "p", "apiKey": "sk-x", "baseUrl": "https://example.com/v1" } ],
+                  "agents": [ { "name": "a", "provider": "p", "model": "m" } ],
+                  "defaultAgent": "a",
+                  "projectSkillsDir": "/abs/skills",
+                  "globalSkillsDir": "/abs/global"
+                }
+                """);
+        AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
+        assertEquals(Path.of("/abs/skills"), catalog.projectSkillsDir());
+        assertEquals(Path.of("/abs/global"), catalog.globalSkillsDir());
+    }
+
+    @Test
+    void skillDirsDefaultToCurrentValues() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "p", "apiKey": "sk-x", "baseUrl": "https://example.com/v1" } ],
+                  "agents": [ { "name": "a", "provider": "p", "model": "m" } ],
+                  "defaultAgent": "a"
+                }
+                """);
+        AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
+        assertEquals(Path.of(System.getProperty("user.dir"), "skills"), catalog.projectSkillsDir());
+        assertEquals(Path.of(System.getProperty("user.home"), ".config", "mrsmith", "skills"),
+                catalog.globalSkillsDir());
+    }
+
     private Path noFile() {
         return tempDir.resolve("missing.json");
     }

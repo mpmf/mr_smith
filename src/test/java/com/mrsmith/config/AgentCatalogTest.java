@@ -109,4 +109,20 @@ class AgentCatalogTest {
         assertThrows(ConfigException.class,
                 () -> new AgentCatalog(List.of(provider), List.of(bad), "coder", true, Path.of("/tmp/s")));
     }
+
+    @Test
+    void convenienceConstructorDefaultsSkillDirs() {
+        AgentCatalog catalog = new AgentCatalog(List.of(provider), List.of(agent), "coder", true, Path.of("/tmp/s"));
+        assertEquals(Path.of(System.getProperty("user.dir"), "skills"), catalog.projectSkillsDir());
+        assertEquals(Path.of(System.getProperty("user.home"), ".config", "mrsmith", "skills"),
+                catalog.globalSkillsDir());
+    }
+
+    @Test
+    void carriesConfiguredSkillDirs() {
+        AgentCatalog catalog = new AgentCatalog(List.of(provider), List.of(agent), "coder", true,
+                Path.of("/tmp/s"), Path.of("/proj/skills"), Path.of("/home/skills"));
+        assertEquals(Path.of("/proj/skills"), catalog.projectSkillsDir());
+        assertEquals(Path.of("/home/skills"), catalog.globalSkillsDir());
+    }
 }

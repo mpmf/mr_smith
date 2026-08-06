@@ -15,9 +15,26 @@ public class AgentCatalog {
     private final String defaultAgent;
     private final boolean includeUsage;
     private final Path sessionsDir;
+    private final Path projectSkillsDir;
+    private final Path globalSkillsDir;
+
+    public static Path defaultProjectSkillsDir() {
+        return Path.of(System.getProperty("user.dir"), "skills");
+    }
+
+    public static Path defaultGlobalSkillsDir() {
+        return Path.of(System.getProperty("user.home"), ".config", "mrsmith", "skills");
+    }
 
     public AgentCatalog(List<ProviderConfig> providers, List<AgentConfig> agents,
                         String defaultAgent, boolean includeUsage, Path sessionsDir) {
+        this(providers, agents, defaultAgent, includeUsage, sessionsDir,
+                defaultProjectSkillsDir(), defaultGlobalSkillsDir());
+    }
+
+    public AgentCatalog(List<ProviderConfig> providers, List<AgentConfig> agents,
+                        String defaultAgent, boolean includeUsage, Path sessionsDir,
+                        Path projectSkillsDir, Path globalSkillsDir) {
         this.providers = new LinkedHashMap<>();
         for (ProviderConfig provider : providers) {
             if (this.providers.putIfAbsent(provider.name(), provider) != null) {
@@ -56,6 +73,8 @@ public class AgentCatalog {
         this.defaultAgent = defaultAgent;
         this.includeUsage = includeUsage;
         this.sessionsDir = sessionsDir;
+        this.projectSkillsDir = projectSkillsDir;
+        this.globalSkillsDir = globalSkillsDir;
     }
 
     public AppConfig resolve(String agentName) {
@@ -78,5 +97,13 @@ public class AgentCatalog {
 
     public Path sessionsDir() {
         return sessionsDir;
+    }
+
+    public Path projectSkillsDir() {
+        return projectSkillsDir;
+    }
+
+    public Path globalSkillsDir() {
+        return globalSkillsDir;
     }
 }

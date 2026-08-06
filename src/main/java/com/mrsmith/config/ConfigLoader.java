@@ -47,7 +47,26 @@ public final class ConfigLoader {
                 root.hasNonNull("sessionsDir") ? root.get("sessionsDir").asText() : null,
                 Path.of(System.getProperty("user.home"), ".config", "mrsmith", "sessions").toString());
 
-        return new AgentCatalog(providers, agents, defaultAgent, includeUsage, Path.of(sessionsDir));
+        Path projectSkillsDir = skillDir(
+                root.hasNonNull("projectSkillsDir") ? root.get("projectSkillsDir").asText() : null,
+                System.getProperty("user.dir"), AgentCatalog.defaultProjectSkillsDir());
+        Path globalSkillsDir = skillDir(
+                root.hasNonNull("globalSkillsDir") ? root.get("globalSkillsDir").asText() : null,
+                System.getProperty("user.home"), AgentCatalog.defaultGlobalSkillsDir());
+
+        return new AgentCatalog(providers, agents, defaultAgent, includeUsage, Path.of(sessionsDir),
+                projectSkillsDir, globalSkillsDir);
+    }
+
+    private static Path skillDir(String configured, String anchor, Path defaultPath) {
+        if (configured == null || configured.isBlank()) {
+            return defaultPath;
+        }
+        Path path = Path.of(configured);
+        if (path.isAbsolute()) {
+            return path;
+        }
+        return Path.of(anchor).resolve(path);
     }
 
     private static List<ProviderConfig> parseProviders(JsonNode root) {
