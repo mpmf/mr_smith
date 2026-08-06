@@ -265,6 +265,50 @@ public class ChatSession {
         startFreshSession();
     }
 
+    private void listSkills() {
+        if (skills.isEmpty()) {
+            io.writeLine("No skills found.");
+            return;
+        }
+        SkillTool skillTool = skillTool();
+        StringBuilder report = new StringBuilder("Skills:");
+        for (String name : skills.names()) {
+            Skill skill = skills.find(name).orElseThrow();
+            String marker = skillTool != null && skillTool.isLoaded(name) ? "*" : "";
+            report.append("\n  ").append(name).append(marker).append("  ").append(skill.description());
+        }
+        io.writeLine(report.toString());
+    }
+
+    private void loadSkill(String name) {
+        if (skills.find(name).isEmpty()) {
+            io.writeLine("Unknown skill: " + name);
+            return;
+        }
+        SkillTool skillTool = skillTool();
+        if (skillTool == null) {
+            io.writeLine("Skill tool is not available.");
+            return;
+        }
+        if (!skillTool.load(name)) {
+            io.writeLine("Skill '" + name + "' is already loaded.");
+            return;
+        }
+        String content = skills.render(name);
+        history.add(new ChatMessage(Role.SYSTEM, content));
+        contextBuilder.appendSystem(content);
+        appendSkillLoad(name);
+        io.writeLine("Loaded skill: " + name);
+    }
+
+    private SkillTool skillTool() {
+        Optional<Tool> tool = toolRegistry.find("skill");
+        if (tool.isPresent() && tool.get() instanceof SkillTool skillTool) {
+            return skillTool;
+        }
+        return null;
+    }
+
     private void appendUser(String content) {
         if (currentSessionId == null) {
             return;
@@ -313,6 +357,18 @@ public class ChatSession {
         }
     }
 
+    private void appendSkillLoad(String name) {
+        if (currentSessionId == null) {
+            return;
+        }
+        try {
+            transcripts.appendSkillLoad(currentSessionId, name);
+        } catch (IOException e) {
+            System.err.println("Warning: could not write session transcript: " + e.getMessage());
+            currentSessionId = null;
+        }
+    }
+
     private void warnIfNearLimit() {
         if (!contextLimitConfigured()) {
             return;
@@ -352,6 +408,14 @@ public class ChatSession {
             switchAgent(line.substring("/agent ".length()).trim());
             return true;
         }
+        if (line.equals("/skills")) {
+            listSkills();
+            return true;
+        }
+        if (line.startsWith("/skills ")) {
+            loadSkill(line.substring("/skills ".length()).trim());
+            return true;
+        }
         switch (line) {
             case "/reset" -> {
                 startFreshSession();
@@ -359,7 +423,7 @@ public class ChatSession {
             }
             case "/agents" -> io.writeLine("Agents: " + String.join(", ", agents.agentNames()));
             case "/usage" -> io.writeLine(usageReport());
-            case "/help" -> io.writeLine("Commands: /exit, /reset, /help, /usage, /agents, /agent <name>. Anything else is sent to the LLM.");
+            case "/help" -> io.writeLine("Commands: /exit, /reset, /help, /usage, /agents, /agent <name>, /skills [name]. Anything else is sent to the LLM.");
             default -> io.writeLine("Unknown command: " + line + " (type /help)");
         }
         return true;

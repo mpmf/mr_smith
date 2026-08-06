@@ -561,6 +561,72 @@ class ChatSessionTest {
         assertEquals(2, loaded);
     }
 
+    @Test
+    void skillsCommandListsSkills() throws Exception {
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("/skills", "/exit"));
+        ChatSession session = session(provider, io, transcripts, catalog(),
+                skillsCatalog("coding", "Write Java."));
+        session.run();
+        assertTrue(provider.receivedHistories.isEmpty());
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("coding") && l.contains("Write Java.")));
+    }
+
+    @Test
+    void skillsCommandLoadsSkill() throws Exception {
+        SkillCatalog skills = skillsCatalog("coding", "Write Java.");
+        ToolRegistryFactory registryFactory = (config, catalog) -> ToolRegistry.with(List.of(), catalog);
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("/skills coding", "hello", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(provider), registryFactory, skills, "a");
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("Loaded skill: coding")));
+        assertEquals(List.of("coding"), transcripts.skillLoads);
+        List<ChatMessage> context = provider.receivedHistories.get(0);
+        assertTrue(context.stream().anyMatch(m -> m.role() == Role.SYSTEM
+                && m.content().startsWith("## coding")));
+    }
+
+    @Test
+    void skillsCommandUnknownSkill() throws Exception {
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("/skills nope", "/exit"));
+        ChatSession session = session(provider, io, transcripts, catalog(),
+                skillsCatalog("coding", "Write Java."));
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("Unknown skill: nope")));
+        assertTrue(transcripts.skillLoads.isEmpty());
+    }
+
+    @Test
+    void manualLoadDedupesWithToolLoad() throws Exception {
+        SkillCatalog skills = skillsCatalog("coding", "Write Java.");
+        ToolRegistryFactory registryFactory = (config, catalog) -> ToolRegistry.with(List.of(), catalog);
+        FakeToolProvider toolProvider = new FakeToolProvider(
+                new ToolCall("call_5", "skill", JSON.readTree("{\"name\":\"coding\"}")),
+                "answer");
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/skills coding", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, skills, "a");
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("Skill 'coding' is already loaded.")));
+    }
+
+    @Test
+    void helpListsSkillsCommand() throws Exception {
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("/help", "/exit"));
+        ChatSession session = session(provider, io, transcripts, catalog());
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("/skills")));
+    }
+
     private AgentCatalog catalog() {
         return catalog(null, null);
     }
