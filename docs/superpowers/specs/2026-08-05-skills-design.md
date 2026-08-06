@@ -96,6 +96,41 @@ quotes stripped. Full YAML is out of scope; no new dependency is added.
 - **Name collision** across roots: project wins, silently.
 - Catalog is loaded once at startup and is immutable for the session.
 
+### Configurable skill directories
+
+The two roots are configurable in the config file, with the current values as
+defaults:
+
+| Config key | Default | Anchor |
+|---|---|---|
+| `projectSkillsDir` | `"skills"` → `<user.dir>/skills` | `user.dir` (CWD) |
+| `globalSkillsDir` | `".config/mrsmith/skills"` → `<user.home>/.config/mrsmith/skills` | `user.home` |
+
+- Both keys are optional; omitted keys fall back to the defaults above, so an
+  existing config behaves exactly as before.
+- A configured value that is a **relative** path is resolved against its anchor
+  (`user.dir` for project, `user.home` for global); an **absolute** value is
+  used as-is.
+- `ConfigLoader` resolves the values to absolute `Path`s and `AgentCatalog`
+  carries them (`projectSkillsDir()`, `globalSkillsDir()`).
+  `ChatCommand` calls `SkillCatalog.discover(catalog.projectSkillsDir(),
+  catalog.globalSkillsDir())` — no hardcoded paths.
+- The defaults are defined once (`AgentCatalog.defaultProjectSkillsDir()` /
+  `defaultGlobalSkillsDir()`) so config parsing and the convenience
+  constructor cannot drift.
+
+Example:
+
+```json
+{
+  "providers": [ ... ],
+  "agents": [ ... ],
+  "defaultAgent": "coder",
+  "projectSkillsDir": "skills",
+  "globalSkillsDir": ".config/mrsmith/skills"
+}
+```
+
 ### SkillCatalog
 
 ```java
@@ -255,4 +290,10 @@ records by the existing tool loop; no extra work there.
   injects a system message and transcript record; dedupe shared between tool
   call and manual load; `/reset` clears loaded state; tools-less agent still
   gets the skill tool; unknown skill handled.
-- `ChatCommandTest` — help mentions `/skills`.
+- `ConfigLoaderTest` — `projectSkillsDir`/`globalSkillsDir` parsed (relative
+  resolved against the anchor, absolute used as-is); omitted keys fall back to
+  the defaults.
+- `AgentCatalogTest` — 7-arg constructor carries the resolved dirs; the
+  convenience constructor uses the defaults.
+- `ChatCommandTest` — help mentions `/skills` (REPL command, covered in
+  `ChatSessionTest`; picocli `--help` unchanged).
