@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 
 public final class EditTool implements Tool {
 
@@ -76,11 +77,14 @@ public final class EditTool implements Tool {
                 return new ToolResult("file not found: " + pathArg, true);
             }
             Path real = ToolPaths.requireCanonicalWithin(root, target);
-            byte[] bytes = Files.readAllBytes(real);
-            if (bytes.length > MAX_BYTES) {
+            if (Files.size(real) > MAX_BYTES) {
                 return new ToolResult("file too large to edit (max " + MAX_BYTES + " bytes)", true);
             }
+            byte[] bytes = Files.readAllBytes(real);
             String content = new String(bytes, StandardCharsets.UTF_8);
+            if (!Arrays.equals(content.getBytes(StandardCharsets.UTF_8), bytes)) {
+                return new ToolResult("file is not valid UTF-8; refusing to edit", true);
+            }
             int count = countOccurrences(content, oldString);
             if (count == 0) {
                 return new ToolResult("oldString not found in file", true);
