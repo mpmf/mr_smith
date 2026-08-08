@@ -126,7 +126,7 @@ class EditToolTest {
     }
 
     @Test
-    void missingFileIsError() {
+    void missingFileIsError() throws Exception {
         ToolResult result = tool().execute(JSON.readTree(
                 "{\"filePath\":\"nope.txt\",\"oldString\":\"x\",\"newString\":\"y\"}"));
         assertTrue(result.error());
@@ -134,7 +134,7 @@ class EditToolTest {
     }
 
     @Test
-    void pathEscapingWorkingDirectoryIsError() {
+    void pathEscapingWorkingDirectoryIsError() throws Exception {
         ToolResult result = tool().execute(JSON.readTree(
                 "{\"filePath\":\"../escape.txt\",\"oldString\":\"x\",\"newString\":\"y\"}"));
         assertTrue(result.error());
