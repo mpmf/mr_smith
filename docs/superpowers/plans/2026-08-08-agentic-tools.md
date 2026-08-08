@@ -582,7 +582,7 @@ class QuestionToolTest {
     }
 
     @Test
-    void picksOptionByNumber() {
+    void picksOptionByNumber() throws Exception {
         StubIo io = new StubIo(List.of("2"));
         ToolResult result = tool(io).execute(JSON.readTree(
                 "{\"questions\":[{\"question\":\"Pick one\",\"options\":[{\"label\":\"A\"},{\"label\":\"B\"}]}]}"));
@@ -593,7 +593,7 @@ class QuestionToolTest {
     }
 
     @Test
-    void picksMultipleByCommaList() {
+    void picksMultipleByCommaList() throws Exception {
         StubIo io = new StubIo(List.of("1,3"));
         ToolResult result = tool(io).execute(JSON.readTree(
                 "{\"questions\":[{\"question\":\"Pick\",\"multiple\":true,\"options\":[{\"label\":\"A\"},{\"label\":\"B\"},{\"label\":\"C\"}]}]}"));
@@ -602,7 +602,7 @@ class QuestionToolTest {
     }
 
     @Test
-    void commaListWithoutMultipleIsFreeText() {
+    void commaListWithoutMultipleIsFreeText() throws Exception {
         StubIo io = new StubIo(List.of("1,3"));
         ToolResult result = tool(io).execute(JSON.readTree(
                 "{\"questions\":[{\"question\":\"Pick\",\"options\":[{\"label\":\"A\"},{\"label\":\"B\"},{\"label\":\"C\"}]}]}"));
@@ -611,7 +611,7 @@ class QuestionToolTest {
     }
 
     @Test
-    void freeTextFallback() {
+    void freeTextFallback() throws Exception {
         StubIo io = new StubIo(List.of("custom answer"));
         ToolResult result = tool(io).execute(JSON.readTree(
                 "{\"questions\":[{\"question\":\"Pick\",\"options\":[{\"label\":\"A\"}]}]}"));
@@ -619,7 +619,7 @@ class QuestionToolTest {
     }
 
     @Test
-    void outOfRangeNumberIsError() {
+    void outOfRangeNumberIsError() throws Exception {
         StubIo io = new StubIo(List.of("5"));
         ToolResult result = tool(io).execute(JSON.readTree(
                 "{\"questions\":[{\"question\":\"Pick\",\"options\":[{\"label\":\"A\"}]}]}"));
@@ -628,7 +628,7 @@ class QuestionToolTest {
     }
 
     @Test
-    void answersMultipleQuestionsInOrder() {
+    void answersMultipleQuestionsInOrder() throws Exception {
         StubIo io = new StubIo(List.of("1", "free"));
         ToolResult result = tool(io).execute(JSON.readTree(
                 "{\"questions\":["
@@ -639,7 +639,7 @@ class QuestionToolTest {
     }
 
     @Test
-    void eofYieldsEmptyAnswer() {
+    void eofYieldsEmptyAnswer() throws Exception {
         StubIo io = new StubIo(List.of());
         ToolResult result = tool(io).execute(JSON.readTree(
                 "{\"questions\":[{\"question\":\"Pick\",\"options\":[{\"label\":\"A\"}]}]}"));
@@ -654,7 +654,7 @@ class QuestionToolTest {
     }
 
     @Test
-    void printsHeaderAndDescription() {
+    void printsHeaderAndDescription() throws Exception {
         StubIo io = new StubIo(List.of("1"));
         tool(io).execute(JSON.readTree(
                 "{\"questions\":[{\"header\":\"Pick\",\"question\":\"Choose\",\"options\":[{\"label\":\"A\",\"description\":\"the first\"}]}]}"));
@@ -1040,7 +1040,7 @@ class ToolRegistryTest {
     }
 
     @Test
-    void resetSessionClearsTodowriteState() {
+    void resetSessionClearsTodowriteState() throws Exception {
         ToolRegistry registry = ToolRegistry.with(List.of(), emptyCatalog(), io);
         TodowriteTool todo = (TodowriteTool) registry.find("todowrite").orElseThrow();
         todo.execute(JSON.readTree(
