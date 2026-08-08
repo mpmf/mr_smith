@@ -145,6 +145,28 @@ class EditToolTest {
     void missingArgumentsThrow() {
         assertThrows(ToolException.class, () -> tool().execute(JSON.readTree("{}")));
     }
+
+    @Test
+    void oversizedFileIsError() throws Exception {
+        Path file = tempDir.resolve("big.txt");
+        Files.write(file, new byte[1_048_576 + 1]);
+        ToolResult result = tool().execute(JSON.readTree(
+                "{\"filePath\":\"big.txt\",\"oldString\":\"x\",\"newString\":\"y\"}"));
+        assertTrue(result.error());
+        assertTrue(result.content().contains("too large"));
+    }
+
+    @Test
+    void nonUtf8FileIsErrorAndUnchanged() throws Exception {
+        Path file = tempDir.resolve("bin.txt");
+        byte[] raw = new byte[]{(byte) 0xC3, (byte) 0x28, 'x', 'y'};
+        Files.write(file, raw);
+        ToolResult result = tool().execute(JSON.readTree(
+                "{\"filePath\":\"bin.txt\",\"oldString\":\"xy\",\"newString\":\"z\"}"));
+        assertTrue(result.error());
+        assertTrue(result.content().contains("not valid UTF-8"));
+        assertTrue(java.util.Arrays.equals(raw, Files.readAllBytes(file)));
+    }
 }
 ```
 
@@ -168,6 +190,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 
 public final class EditTool implements Tool {
 
@@ -236,11 +259,14 @@ public final class EditTool implements Tool {
                 return new ToolResult("file not found: " + pathArg, true);
             }
             Path real = ToolPaths.requireCanonicalWithin(root, target);
-            byte[] bytes = Files.readAllBytes(real);
-            if (bytes.length > MAX_BYTES) {
+            if (Files.size(real) > MAX_BYTES) {
                 return new ToolResult("file too large to edit (max " + MAX_BYTES + " bytes)", true);
             }
+            byte[] bytes = Files.readAllBytes(real);
             String content = new String(bytes, StandardCharsets.UTF_8);
+            if (!Arrays.equals(content.getBytes(StandardCharsets.UTF_8), bytes)) {
+                return new ToolResult("file is not valid UTF-8; refusing to edit", true);
+            }
             int count = countOccurrences(content, oldString);
             if (count == 0) {
                 return new ToolResult("oldString not found in file", true);

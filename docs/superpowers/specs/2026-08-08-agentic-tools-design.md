@@ -65,12 +65,16 @@ Parameters:
 
 `execute`:
 
-- Missing/blank `filePath`, `oldString`, or `newString` → `ToolException`.
+- Missing `filePath`, blank `filePath`/`oldString`, or missing `newString` →
+  `ToolException`. A blank `newString` is allowed and deletes the matched
+  text (mirrors the host `edit` tool).
 - Resolve `filePath` with the existing file-tool path rules (`ToolPaths`):
   relative to CWD, normalized, must stay inside the CWD root, symlink
   containment enforced (same as `read_file`/`write_file`).
-- Read the file; if it exceeds 1 MiB → error result (safety cap, matching
-  `read_file`).
+- The file must be a regular file; if it exceeds 1 MiB → error result (checked
+  by size before reading, matching `read_file`).
+- The file must decode losslessly as UTF-8; otherwise → error result and the
+  file is left untouched (refuses to corrupt non-UTF-8 content).
 - Count occurrences of `oldString` (exact substring):
   - 0 → `ToolResult("oldString not found in file", error=true)`
   - more than 1 and `replaceAll` not true →
@@ -201,6 +205,7 @@ Return `ToolResult(<JSON array of the answers, in question order>, error=false)`
 | `edit` — `newString == oldString` | error result; file unchanged |
 | `edit` — path escapes CWD / symlink escape | `ToolException`, handled as error result |
 | `edit` — file > 1 MiB | error result; file unchanged |
+| `edit` — not losslessly UTF-8 | error result; file unchanged |
 | `todowrite` — invalid status/priority/blank content | `ToolException` naming the invalid item |
 | `question` — out-of-range option number | error result |
 | `question` — EOF (Ctrl-D) | empty answer returned |
