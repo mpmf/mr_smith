@@ -104,14 +104,14 @@ public final class QuestionTool implements Tool {
         }
         boolean multiple = question.path("multiple").asBoolean(false);
         String answer = readAnswer().trim();
-        if (answer.matches("\\d+")) {
+        if (answer.matches("\\d{1,9}")) {
             int n = Integer.parseInt(answer) - 1;
             if (n < 0 || n >= options.size()) {
                 return new ToolResult(answer + " is not a valid option", true);
             }
             return new ToolResult(encode(options.get(n).path("label").asText()), false);
         }
-        if (multiple && answer.matches("\\d+(\\s*,\\s*\\d+)+")) {
+        if (multiple && answer.matches("\\d{1,9}(\\s*,\\s*\\d{1,9})+")) {
             ArrayNode picked = JSON.createArrayNode();
             for (String part : answer.split(",")) {
                 String p = part.trim();

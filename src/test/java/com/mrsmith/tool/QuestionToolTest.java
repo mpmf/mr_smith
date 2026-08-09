@@ -119,6 +119,15 @@ class QuestionToolTest {
     }
 
     @Test
+    void oversizedNumberIsFreeText() throws Exception {
+        StubIo io = new StubIo(List.of("12345678901234567890"));
+        ToolResult result = tool(io).execute(JSON.readTree(
+                "{\"questions\":[{\"question\":\"Pick\",\"options\":[{\"label\":\"A\"}]}]}"));
+        assertFalse(result.error());
+        assertEquals("[\"12345678901234567890\"]", result.content());
+    }
+
+    @Test
     void missingQuestionsThrows() {
         StubIo io = new StubIo(List.of());
         assertThrows(ToolException.class, () -> tool(io).execute(JSON.readTree("{}")));
