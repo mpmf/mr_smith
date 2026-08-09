@@ -192,7 +192,8 @@ Return `ToolResult(<JSON array of the answers, in question order>, error=false)`
 ### /tasks command
 
 - `/tasks` prints the current task list from `todowrite`, one per line:
-  `<status> <priority> <content>` (e.g. `in_progress high implement edit tool`).
+  `<status> <priority>  <content>` (two spaces before the content, mirroring
+  the `/skills` layout; e.g. `in_progress high  implement edit tool`).
   Empty list → `No tasks.` No `todowrite` tool in the registry → `No task list available.`
 - `/help` gains `/tasks`.
 
