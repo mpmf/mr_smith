@@ -16,6 +16,7 @@ import com.mrsmith.session.TranscriptWriter;
 import com.mrsmith.skill.Skill;
 import com.mrsmith.skill.SkillCatalog;
 import com.mrsmith.tool.SkillTool;
+import com.mrsmith.tool.TodowriteTool;
 import com.mrsmith.tool.Tool;
 import com.mrsmith.tool.ToolException;
 import com.mrsmith.tool.ToolRegistry;
@@ -204,7 +205,7 @@ public class ChatSession {
 
     private String describe(ToolCall call) {
         JsonNode args = call.arguments();
-        for (String key : List.of("command", "path", "pattern", "url")) {
+        for (String key : List.of("command", "path", "filePath", "pattern", "url")) {
             JsonNode value = args != null ? args.get(key) : null;
             if (value != null && value.isTextual()) {
                 return value.asText();
@@ -216,7 +217,7 @@ public class ChatSession {
     private void applyAgent() {
         config = agents.resolve(currentAgentName);
         provider = providerFactory.create(config);
-        toolRegistry = toolRegistryFactory.create(config, skills);
+        toolRegistry = toolRegistryFactory.create(config, skills, io);
     }
 
     private void startFreshSession() {
@@ -305,6 +306,33 @@ public class ChatSession {
         Optional<Tool> tool = toolRegistry.find("skill");
         if (tool.isPresent() && tool.get() instanceof SkillTool skillTool) {
             return skillTool;
+        }
+        return null;
+    }
+
+    private void listTasks() {
+        TodowriteTool todoTool = todoTool();
+        if (todoTool == null) {
+            io.writeLine("No task list available.");
+            return;
+        }
+        List<TodowriteTool.Task> tasks = todoTool.tasks();
+        if (tasks.isEmpty()) {
+            io.writeLine("No tasks.");
+            return;
+        }
+        StringBuilder report = new StringBuilder("Tasks:");
+        for (TodowriteTool.Task task : tasks) {
+            report.append("\n  ").append(task.status()).append(" ")
+                    .append(task.priority()).append("  ").append(task.content());
+        }
+        io.writeLine(report.toString());
+    }
+
+    private TodowriteTool todoTool() {
+        Optional<Tool> tool = toolRegistry.find("todowrite");
+        if (tool.isPresent() && tool.get() instanceof TodowriteTool todoTool) {
+            return todoTool;
         }
         return null;
     }
@@ -416,6 +444,10 @@ public class ChatSession {
             loadSkill(line.substring("/skills ".length()).trim());
             return true;
         }
+        if (line.equals("/tasks")) {
+            listTasks();
+            return true;
+        }
         switch (line) {
             case "/reset" -> {
                 startFreshSession();
@@ -423,7 +455,7 @@ public class ChatSession {
             }
             case "/agents" -> io.writeLine("Agents: " + String.join(", ", agents.agentNames()));
             case "/usage" -> io.writeLine(usageReport());
-            case "/help" -> io.writeLine("Commands: /exit, /reset, /help, /usage, /agents, /agent <name>, /skills [name]. Anything else is sent to the LLM.");
+            case "/help" -> io.writeLine("Commands: /exit, /reset, /help, /usage, /agents, /agent <name>, /skills [name], /tasks. Anything else is sent to the LLM.");
             default -> io.writeLine("Unknown command: " + line + " (type /help)");
         }
         return true;

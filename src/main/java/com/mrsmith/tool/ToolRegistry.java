@@ -1,5 +1,6 @@
 package com.mrsmith.tool;
 
+import com.mrsmith.io.IO;
 import com.mrsmith.skill.SkillCatalog;
 
 import java.util.ArrayList;
@@ -35,7 +36,7 @@ public final class ToolRegistry {
         this.byName = Map.copyOf(index);
     }
 
-    public static ToolRegistry with(List<String> toolNames, SkillCatalog catalog) {
+    public static ToolRegistry with(List<String> toolNames, SkillCatalog catalog, IO io) {
         List<Tool> tools = new ArrayList<>();
         for (String name : toolNames) {
             Supplier<Tool> factory = BUILT_INS.get(name);
@@ -44,6 +45,9 @@ public final class ToolRegistry {
             }
             tools.add(factory.get());
         }
+        tools.add(new EditTool());
+        tools.add(new TodowriteTool());
+        tools.add(new QuestionTool(io));
         if (catalog != null && !catalog.isEmpty()) {
             tools.add(new SkillTool(catalog));
         }

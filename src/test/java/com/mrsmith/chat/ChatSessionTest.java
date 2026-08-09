@@ -415,7 +415,7 @@ class ChatSessionTest {
     @Test
     void runsToolLoopAndFeedsResultBack() throws Exception {
         FakeTool readFile = new FakeTool("read_file", true, new ToolResult("file contents", false));
-        ToolRegistryFactory registryFactory = (config, catalog) -> new ToolRegistry(List.of(readFile));
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> new ToolRegistry(List.of(readFile));
         FakeToolProvider toolProvider = new FakeToolProvider(
                 new ToolCall("call_1", "read_file", JSON.readTree("{\"path\":\"a.txt\"}")),
                 "final answer");
@@ -438,7 +438,7 @@ class ChatSessionTest {
     @Test
     void declinesNonReadOnlyTool() throws Exception {
         FakeTool shell = new FakeTool("shell", false, new ToolResult("ran", false));
-        ToolRegistryFactory registryFactory = (config, catalog) -> new ToolRegistry(List.of(shell));
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> new ToolRegistry(List.of(shell));
         FakeToolProvider toolProvider = new FakeToolProvider(
                 new ToolCall("call_2", "shell", JSON.readTree("{\"command\":\"rm -rf /\"}")),
                 "answer after decline");
@@ -457,7 +457,7 @@ class ChatSessionTest {
     @Test
     void confirmsNonReadOnlyToolOnYes() throws Exception {
         FakeTool shell = new FakeTool("shell", false, new ToolResult("ran", false));
-        ToolRegistryFactory registryFactory = (config, catalog) -> new ToolRegistry(List.of(shell));
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> new ToolRegistry(List.of(shell));
         FakeToolProvider toolProvider = new FakeToolProvider(
                 new ToolCall("call_3", "shell", JSON.readTree("{\"command\":\"echo hi\"}")),
                 "answer");
@@ -471,7 +471,7 @@ class ChatSessionTest {
 
     @Test
     void unknownToolProducesErrorResult() throws Exception {
-        ToolRegistryFactory registryFactory = (config, catalog) -> new ToolRegistry(List.of());
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> new ToolRegistry(List.of());
         FakeToolProvider toolProvider = new FakeToolProvider(
                 new ToolCall("call_4", "nonexistent", JSON.readTree("{}")),
                 "answer");
@@ -490,7 +490,7 @@ class ChatSessionTest {
     @Test
     void stopsAtToolRoundLimit() throws Exception {
         FakeTool tool = new FakeTool("read_file", true, new ToolResult("data", false));
-        ToolRegistryFactory registryFactory = (config, catalog) -> new ToolRegistry(List.of(tool));
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> new ToolRegistry(List.of(tool));
         FakeToolProvider provider = new FakeToolProvider();
         provider.alwaysCall("read_file", JSON.readTree("{\"path\":\"a.txt\"}"));
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
@@ -510,7 +510,7 @@ class ChatSessionTest {
     @Test
     void noToolsAgentSendsEmptyToolsList() throws Exception {
         FakeProvider provider = new FakeProvider();
-        ToolRegistryFactory registryFactory = (config, catalog) -> new ToolRegistry(List.of());
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> new ToolRegistry(List.of());
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "/exit"));
         ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
@@ -537,7 +537,7 @@ class ChatSessionTest {
     @Test
     void toolsLessAgentStillGetsSkillTool() throws Exception {
         SkillCatalog skills = skillsCatalog("coding", "Write Java.");
-        ToolRegistryFactory registryFactory = (config, catalog) -> ToolRegistry.with(List.of(), catalog);
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> ToolRegistry.with(List.of(), catalog, io);
         FakeProvider provider = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "/exit"));
@@ -550,7 +550,7 @@ class ChatSessionTest {
     @Test
     void resetClearsLoadedSkills() throws Exception {
         SkillCatalog skills = skillsCatalog("coding", "Write Java.");
-        ToolRegistryFactory registryFactory = (config, catalog) -> ToolRegistry.with(List.of(), catalog);
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> ToolRegistry.with(List.of(), catalog, io);
         FakeProvider provider = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("/skills coding", "/reset", "/skills coding", "/exit"));
@@ -576,7 +576,7 @@ class ChatSessionTest {
     @Test
     void skillsCommandLoadsSkill() throws Exception {
         SkillCatalog skills = skillsCatalog("coding", "Write Java.");
-        ToolRegistryFactory registryFactory = (config, catalog) -> ToolRegistry.with(List.of(), catalog);
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> ToolRegistry.with(List.of(), catalog, io);
         FakeProvider provider = new FakeProvider();
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("/skills coding", "hello", "/exit"));
@@ -605,7 +605,7 @@ class ChatSessionTest {
     @Test
     void manualLoadDedupesWithToolLoad() throws Exception {
         SkillCatalog skills = skillsCatalog("coding", "Write Java.");
-        ToolRegistryFactory registryFactory = (config, catalog) -> ToolRegistry.with(List.of(), catalog);
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> ToolRegistry.with(List.of(), catalog, io);
         FakeToolProvider toolProvider = new FakeToolProvider(
                 new ToolCall("call_5", "skill", JSON.readTree("{\"name\":\"coding\"}")),
                 "answer");
@@ -625,6 +625,133 @@ class ChatSessionTest {
         ChatSession session = session(provider, io, transcripts, catalog());
         session.run();
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("/skills")));
+    }
+
+    @Test
+    void editRequiresApproval() throws Exception {
+        FakeTool edit = new FakeTool("edit", false, new ToolResult("Edited x", false));
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> new ToolRegistry(List.of(edit));
+        FakeToolProvider toolProvider = new FakeToolProvider(
+                new ToolCall("call_e1", "edit",
+                        JSON.readTree("{\"filePath\":\"a.txt\",\"oldString\":\"x\",\"newString\":\"y\"}")),
+                "answer");
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "n", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, emptySkills(), "a");
+        session.run();
+        assertEquals(0, edit.calls);
+        List<ChatMessage> secondSend = toolProvider.receivedHistories.get(1);
+        ChatMessage last = secondSend.get(secondSend.size() - 1);
+        assertTrue(last.content().contains("declined"));
+    }
+
+    @Test
+    void todowriteRunsWithoutApproval() throws Exception {
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> ToolRegistry.with(List.of(), catalog, io);
+        FakeToolProvider toolProvider = new FakeToolProvider(
+                new ToolCall("call_t1", "todowrite",
+                        JSON.readTree("{\"todos\":[{\"content\":\"a\",\"status\":\"in_progress\",\"priority\":\"high\"}]}")),
+                "ok");
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, emptySkills(), "a");
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("tool: todowrite() -> ok")));
+        List<ChatMessage> secondSend = toolProvider.receivedHistories.get(1);
+        ChatMessage last = secondSend.get(secondSend.size() - 1);
+        assertEquals(Role.TOOL, last.role());
+        assertTrue(last.content().contains("in_progress"));
+    }
+
+    @Test
+    void questionReadsAnswerWithoutApproval() throws Exception {
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> ToolRegistry.with(List.of(), catalog, io);
+        FakeToolProvider toolProvider = new FakeToolProvider(
+                new ToolCall("call_q1", "question",
+                        JSON.readTree("{\"questions\":[{\"question\":\"Pick\",\"options\":[{\"label\":\"A\"},{\"label\":\"B\"}]}]}")),
+                "chosen");
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "2", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, emptySkills(), "a");
+        session.run();
+        List<ChatMessage> secondSend = toolProvider.receivedHistories.get(1);
+        ChatMessage last = secondSend.get(secondSend.size() - 1);
+        assertEquals(Role.TOOL, last.role());
+        assertEquals("[\"B\"]", last.content());
+    }
+
+    @Test
+    void tasksCommandShowsEmptyList() throws Exception {
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> ToolRegistry.with(List.of(), catalog, io);
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("/tasks", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(provider), registryFactory, emptySkills(), "a");
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("No tasks.")));
+        assertTrue(provider.receivedHistories.isEmpty());
+    }
+
+    @Test
+    void tasksCommandListsTasks() throws Exception {
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> ToolRegistry.with(List.of(), catalog, io);
+        FakeToolProvider toolProvider = new FakeToolProvider(
+                new ToolCall("call_t2", "todowrite",
+                        JSON.readTree("{\"todos\":[{\"content\":\"implement edit\",\"status\":\"in_progress\",\"priority\":\"high\"},{\"content\":\"write tests\",\"status\":\"pending\",\"priority\":\"low\"}]}")),
+                "done");
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/tasks", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, emptySkills(), "a");
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("in_progress high  implement edit")));
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("pending low  write tests")));
+    }
+
+    @Test
+    void resetClearsTaskList() throws Exception {
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> ToolRegistry.with(List.of(), catalog, io);
+        FakeToolProvider toolProvider = new FakeToolProvider(
+                new ToolCall("call_t3", "todowrite",
+                        JSON.readTree("{\"todos\":[{\"content\":\"a\",\"status\":\"pending\",\"priority\":\"high\"}]}")),
+                "done");
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/reset", "/tasks", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, emptySkills(), "a");
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("No tasks.")));
+    }
+
+    @Test
+    void toolsLessAgentGetsAlwaysOnTools() throws Exception {
+        SkillCatalog skills = skillsCatalog("coding", "Write Java.");
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> ToolRegistry.with(List.of(), catalog, io);
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(provider), registryFactory, skills, "a");
+        session.run();
+        List<String> names = provider.receivedTools.get(0).stream().map(Tool::name).toList();
+        assertTrue(names.contains("edit"));
+        assertTrue(names.contains("todowrite"));
+        assertTrue(names.contains("question"));
+        assertTrue(names.contains("skill"));
+    }
+
+    @Test
+    void helpMentionsTasksCommand() throws Exception {
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("/help", "/exit"));
+        ChatSession session = session(provider, io, transcripts, catalog());
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("/tasks")));
     }
 
     private AgentCatalog catalog() {
@@ -650,7 +777,7 @@ class ChatSessionTest {
     }
 
     private ToolRegistryFactory noToolsFactory() {
-        return (config, catalog) -> new ToolRegistry(List.of());
+        return (config, catalog, io) -> new ToolRegistry(List.of());
     }
 
     private SkillCatalog emptySkills() {

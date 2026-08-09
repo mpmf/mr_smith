@@ -2,6 +2,7 @@ package com.mrsmith.tool;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mrsmith.io.IO;
 import com.mrsmith.skill.SkillCatalog;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -23,6 +24,27 @@ class ToolRegistryTest {
 
     @TempDir
     Path tempDir;
+
+    static class IoStub implements IO {
+        @Override
+        public String readLine() throws IOException {
+            return null;
+        }
+
+        @Override
+        public void write(String text) {
+        }
+
+        @Override
+        public void writeLine(String line) {
+        }
+
+        @Override
+        public void writeReasoning(String text) {
+        }
+    }
+
+    private final IO io = new IoStub();
 
     static class StubTool implements Tool {
         private final String name;
@@ -102,15 +124,15 @@ class ToolRegistryTest {
     void builtInWithNamesCreatesAllRequestedTools() {
         ToolRegistry registry = ToolRegistry.with(
                 List.of("shell", "read_file", "write_file", "list_dir", "glob", "web_fetch"),
-                emptyCatalog());
-        assertEquals(6, registry.tools().size());
+                emptyCatalog(), io);
+        assertEquals(9, registry.tools().size());
         assertTrue(registry.find("shell").isPresent());
         assertTrue(registry.find("web_fetch").isPresent());
     }
 
     @Test
     void builtInWithUnknownNameThrows() {
-        assertThrows(ToolException.class, () -> ToolRegistry.with(List.of("nope"), emptyCatalog()));
+        assertThrows(ToolException.class, () -> ToolRegistry.with(List.of("nope"), emptyCatalog(), io));
     }
 
     @Test
@@ -120,27 +142,55 @@ class ToolRegistryTest {
     }
 
     @Test
-    void addsSkillToolWhenCatalogNonEmpty() throws IOException {
-        ToolRegistry registry = ToolRegistry.with(List.of(), catalogWith("coding"));
-        assertTrue(registry.find("skill").isPresent());
-        assertEquals(1, registry.tools().size());
+    void alwaysOnToolsAddedEvenWhenCatalogEmpty() {
+        ToolRegistry registry = ToolRegistry.with(List.of(), emptyCatalog(), io);
+        assertEquals(3, registry.tools().size());
+        assertTrue(registry.find("edit").isPresent());
+        assertTrue(registry.find("todowrite").isPresent());
+        assertTrue(registry.find("question").isPresent());
+        assertFalse(registry.find("skill").isPresent());
     }
 
     @Test
-    void omitsSkillToolWhenCatalogEmpty() {
-        ToolRegistry registry = ToolRegistry.with(List.of(), emptyCatalog());
-        assertFalse(registry.find("skill").isPresent());
-        assertTrue(registry.isEmpty());
+    void addsSkillToolWhenCatalogNonEmpty() throws IOException {
+        ToolRegistry registry = ToolRegistry.with(List.of(), catalogWith("coding"), io);
+        assertEquals(4, registry.tools().size());
+        assertTrue(registry.find("skill").isPresent());
+    }
+
+    @Test
+    void alwaysOnToolsNotInBuiltinNames() {
+        assertFalse(ToolRegistry.builtinNames().contains("edit"));
+        assertFalse(ToolRegistry.builtinNames().contains("todowrite"));
+        assertFalse(ToolRegistry.builtinNames().contains("question"));
+    }
+
+    @Test
+    void alwaysOnToolsHaveExpectedApproval() {
+        ToolRegistry registry = ToolRegistry.with(List.of(), emptyCatalog(), io);
+        assertFalse(registry.find("edit").orElseThrow().isReadOnly());
+        assertTrue(registry.find("todowrite").orElseThrow().isReadOnly());
+        assertTrue(registry.find("question").orElseThrow().isReadOnly());
     }
 
     @Test
     void resetSessionClearsSkillToolState() throws IOException {
         SkillCatalog catalog = catalogWith("coding");
-        ToolRegistry registry = ToolRegistry.with(List.of(), catalog);
+        ToolRegistry registry = ToolRegistry.with(List.of(), catalog, io);
         Tool skillTool = registry.find("skill").orElseThrow();
         skillTool.execute(JSON.readTree("{\"name\":\"coding\"}"));
         registry.resetSession();
         ToolResult result = skillTool.execute(JSON.readTree("{\"name\":\"coding\"}"));
         assertTrue(result.content().startsWith("## coding"));
+    }
+
+    @Test
+    void resetSessionClearsTodowriteState() throws Exception {
+        ToolRegistry registry = ToolRegistry.with(List.of(), emptyCatalog(), io);
+        TodowriteTool todo = (TodowriteTool) registry.find("todowrite").orElseThrow();
+        todo.execute(JSON.readTree(
+                "{\"todos\":[{\"content\":\"a\",\"status\":\"pending\",\"priority\":\"high\"}]}"));
+        registry.resetSession();
+        assertTrue(todo.tasks().isEmpty());
     }
 }
