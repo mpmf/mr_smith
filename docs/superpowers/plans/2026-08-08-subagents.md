@@ -1362,7 +1362,7 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
             }
             tracker.recordSessionUsage(result.usage(), result.estimated);
             return new TaskResult("subagent-" + n, result.message().content(), false);
-        } catch (ProviderException | RuntimeException e) {
+        } catch (RuntimeException e) {
             return new TaskResult("subagent-" + n, e.getMessage(), true);
         } catch (IOException e) {
             return new TaskResult("subagent-" + n, "could not write subagent transcript: " + e.getMessage(), true);
