@@ -55,6 +55,7 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
 
     @Override
     public TaskResult run(String prompt, String agentName, String taskId) {
+        UUID sid = sessionId.get();
         AppConfig config = resolveConfig(agentName);
         if (config == null) {
             return new TaskResult(null, "Unknown agent: " + agentName, true);
@@ -72,16 +73,21 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
             n = parsed;
             resume = true;
         }
-        FullContextBuilder context = new FullContextBuilder();
-        context.start(config.systemPrompt());
-        List<ChatMessage> replayed;
-        try {
-            replayed = resume ? store.read(n) : List.of();
-        } catch (IOException e) {
+        if (resume && sid == null) {
             return new TaskResult(null, "Unknown task_id: " + taskId, true);
         }
-        if (replayed == null) {
-            return new TaskResult(null, "Unknown task_id: " + taskId, true);
+        FullContextBuilder context = new FullContextBuilder();
+        context.start(config.systemPrompt());
+        List<ChatMessage> replayed = List.of();
+        if (resume) {
+            try {
+                replayed = store.read(n);
+            } catch (IOException e) {
+                return new TaskResult(null, "Unknown task_id: " + taskId, true);
+            }
+            if (replayed == null) {
+                return new TaskResult(null, "Unknown task_id: " + taskId, true);
+            }
         }
         for (ChatMessage message : replayed) {
             replay(context, message);
@@ -90,22 +96,22 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
 
         Provider provider = providerFactory.create(config);
         ToolRegistry tools = toolsBuilder.apply(config);
-        TranscriptWriter transcripts = store.writer(n);
+        TranscriptWriter transcripts = sid == null ? null : store.writer(n);
         try {
-            if (sessionId.get() != null) {
-                transcripts.start(sessionId.get());
-                transcripts.appendUser(sessionId.get(), prompt);
+            if (transcripts != null) {
+                transcripts.start(sid);
+                transcripts.appendUser(sid, prompt);
             }
             ToolLoop.LoopResult result = ToolLoop.run(context, provider, tools.tools(),
                     io, maxToolRounds(config), sinkFor(context, transcripts));
-            if (sessionId.get() != null) {
-                transcripts.appendAssistant(sessionId.get(), result.message().content(),
+            if (transcripts != null) {
+                transcripts.appendAssistant(sid, result.message().content(),
                         result.message().thinking(), result.usage(), result.estimated());
             }
             tracker.recordSessionUsage(result.usage(), result.estimated());
             return new TaskResult("subagent-" + n, result.message().content(), false);
         } catch (RuntimeException e) {
-            return new TaskResult("subagent-" + n, e.getMessage(), true);
+            return new TaskResult("subagent-" + n, safeMessage(e), true);
         } catch (IOException e) {
             return new TaskResult("subagent-" + n, "could not write subagent transcript: " + e.getMessage(), true);
         }
@@ -127,10 +133,10 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
             @Override
             public void assistantWithToolCalls(ChatMessage message, List<ToolCall> calls) {
                 context.appendAssistantToolCalls(calls);
-                if (sessionId.get() != null) {
+                if (transcripts != null) {
                     try {
                         for (ToolCall call : calls) {
-                            transcripts.appendToolCall(sessionId.get(), call.id(), call.name(), call.arguments());
+                            transcripts.appendToolCall(sidForWrites(), call.id(), call.name(), call.arguments());
                         }
                     } catch (IOException e) {
                         System.err.println("Warning: could not write subagent transcript: " + e.getMessage());
@@ -141,15 +147,24 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
             @Override
             public void toolResult(String id, String content, boolean error) {
                 context.appendToolResult(id, content);
-                if (sessionId.get() != null) {
+                if (transcripts != null) {
                     try {
-                        transcripts.appendToolResult(sessionId.get(), id, content, error);
+                        transcripts.appendToolResult(sidForWrites(), id, content, error);
                     } catch (IOException e) {
                         System.err.println("Warning: could not write subagent transcript: " + e.getMessage());
                     }
                 }
             }
         };
+    }
+
+    private UUID sidForWrites() {
+        return sessionId.get();
+    }
+
+    private static String safeMessage(RuntimeException e) {
+        String message = e.getMessage();
+        return message == null ? e.getClass().getSimpleName() : message;
     }
 
     private static void replay(FullContextBuilder context, ChatMessage message) {

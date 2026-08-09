@@ -284,4 +284,15 @@ class SubAgentRunnerTest {
         assertEquals(5, tracker.completionTokens());
         assertEquals(15, tracker.totalTokens());
     }
+
+    @Test
+    void runsWithoutTranscriptWhenSessionIdIsNull() throws Exception {
+        AgentCatalog catalog = catalog();
+        SubAgentRunner runner = new SubAgentRunner(catalog, new FakeProviderFactory(new FakeProvider()),
+                cfg -> new ToolRegistry(List.of()), new StubIo(List.of()), new UsageTracker(),
+                () -> catalog.resolve("a"), () -> null);
+        TaskResult result = runner.run("x", null, null);
+        assertFalse(result.error());
+        assertEquals("subagent-1", result.id());
+    }
 }
