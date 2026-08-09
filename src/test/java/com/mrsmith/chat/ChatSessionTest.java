@@ -627,6 +627,133 @@ class ChatSessionTest {
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("/skills")));
     }
 
+    @Test
+    void editRequiresApproval() throws Exception {
+        FakeTool edit = new FakeTool("edit", false, new ToolResult("Edited x", false));
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> new ToolRegistry(List.of(edit));
+        FakeToolProvider toolProvider = new FakeToolProvider(
+                new ToolCall("call_e1", "edit",
+                        JSON.readTree("{\"filePath\":\"a.txt\",\"oldString\":\"x\",\"newString\":\"y\"}")),
+                "answer");
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "n", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, emptySkills(), "a");
+        session.run();
+        assertEquals(0, edit.calls);
+        List<ChatMessage> secondSend = toolProvider.receivedHistories.get(1);
+        ChatMessage last = secondSend.get(secondSend.size() - 1);
+        assertTrue(last.content().contains("declined"));
+    }
+
+    @Test
+    void todowriteRunsWithoutApproval() throws Exception {
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> ToolRegistry.with(List.of(), catalog, io);
+        FakeToolProvider toolProvider = new FakeToolProvider(
+                new ToolCall("call_t1", "todowrite",
+                        JSON.readTree("{\"todos\":[{\"content\":\"a\",\"status\":\"in_progress\",\"priority\":\"high\"}]}")),
+                "ok");
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, emptySkills(), "a");
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("tool: todowrite() -> ok")));
+        List<ChatMessage> secondSend = toolProvider.receivedHistories.get(1);
+        ChatMessage last = secondSend.get(secondSend.size() - 1);
+        assertEquals(Role.TOOL, last.role());
+        assertTrue(last.content().contains("in_progress"));
+    }
+
+    @Test
+    void questionReadsAnswerWithoutApproval() throws Exception {
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> ToolRegistry.with(List.of(), catalog, io);
+        FakeToolProvider toolProvider = new FakeToolProvider(
+                new ToolCall("call_q1", "question",
+                        JSON.readTree("{\"questions\":[{\"question\":\"Pick\",\"options\":[{\"label\":\"A\"},{\"label\":\"B\"}]}]}")),
+                "chosen");
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "2", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, emptySkills(), "a");
+        session.run();
+        List<ChatMessage> secondSend = toolProvider.receivedHistories.get(1);
+        ChatMessage last = secondSend.get(secondSend.size() - 1);
+        assertEquals(Role.TOOL, last.role());
+        assertEquals("[\"B\"]", last.content());
+    }
+
+    @Test
+    void tasksCommandShowsEmptyList() throws Exception {
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> ToolRegistry.with(List.of(), catalog, io);
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("/tasks", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(provider), registryFactory, emptySkills(), "a");
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("No tasks.")));
+        assertTrue(provider.receivedHistories.isEmpty());
+    }
+
+    @Test
+    void tasksCommandListsTasks() throws Exception {
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> ToolRegistry.with(List.of(), catalog, io);
+        FakeToolProvider toolProvider = new FakeToolProvider(
+                new ToolCall("call_t2", "todowrite",
+                        JSON.readTree("{\"todos\":[{\"content\":\"implement edit\",\"status\":\"in_progress\",\"priority\":\"high\"},{\"content\":\"write tests\",\"status\":\"pending\",\"priority\":\"low\"}]}")),
+                "done");
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/tasks", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, emptySkills(), "a");
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("in_progress high  implement edit")));
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("pending low  write tests")));
+    }
+
+    @Test
+    void resetClearsTaskList() throws Exception {
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> ToolRegistry.with(List.of(), catalog, io);
+        FakeToolProvider toolProvider = new FakeToolProvider(
+                new ToolCall("call_t3", "todowrite",
+                        JSON.readTree("{\"todos\":[{\"content\":\"a\",\"status\":\"pending\",\"priority\":\"high\"}]}")),
+                "done");
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/reset", "/tasks", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, emptySkills(), "a");
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("No tasks.")));
+    }
+
+    @Test
+    void toolsLessAgentGetsAlwaysOnTools() throws Exception {
+        SkillCatalog skills = skillsCatalog("coding", "Write Java.");
+        ToolRegistryFactory registryFactory = (config, catalog, io) -> ToolRegistry.with(List.of(), catalog, io);
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(provider), registryFactory, skills, "a");
+        session.run();
+        List<String> names = provider.receivedTools.get(0).stream().map(Tool::name).toList();
+        assertTrue(names.contains("edit"));
+        assertTrue(names.contains("todowrite"));
+        assertTrue(names.contains("question"));
+        assertTrue(names.contains("skill"));
+    }
+
+    @Test
+    void helpMentionsTasksCommand() throws Exception {
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("/help", "/exit"));
+        ChatSession session = session(provider, io, transcripts, catalog());
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("/tasks")));
+    }
+
     private AgentCatalog catalog() {
         return catalog(null, null);
     }
