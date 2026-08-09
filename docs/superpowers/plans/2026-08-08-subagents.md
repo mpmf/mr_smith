@@ -569,7 +569,7 @@ class SubAgentTranscriptStoreTest {
     }
 
     @Test
-    void missingFileReadsAsNull() {
+    void missingFileReadsAsNull() throws IOException {
         assertNull(store().read(7));
     }
 
