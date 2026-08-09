@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -75,5 +76,23 @@ class TodowriteToolTest {
                 "{\"todos\":[{\"content\":\"a\",\"status\":\"pending\",\"priority\":\"high\"}]}"));
         tool.reset();
         assertTrue(tool.tasks().isEmpty());
+    }
+
+    @Test
+    void schemaDeclaresStatusAndPriorityEnums() {
+        TodowriteTool tool = new TodowriteTool();
+        JsonNode schema = tool.parametersSchema();
+        assertEquals(List.of("pending", "in_progress", "completed", "cancelled"),
+                toTextList(schema.at("/properties/todos/items/properties/status/enum")));
+        assertEquals(List.of("high", "medium", "low"),
+                toTextList(schema.at("/properties/todos/items/properties/priority/enum")));
+    }
+
+    private static List<String> toTextList(JsonNode arr) {
+        List<String> result = new ArrayList<>();
+        for (JsonNode node : arr) {
+            result.add(node.asText());
+        }
+        return result;
     }
 }

@@ -7,13 +7,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 public final class TodowriteTool implements Tool, Resettable {
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final Set<String> STATUSES = Set.of("pending", "in_progress", "completed", "cancelled");
-    private static final Set<String> PRIORITIES = Set.of("high", "medium", "low");
+    private static final List<String> STATUSES = List.of("pending", "in_progress", "completed", "cancelled");
+    private static final List<String> PRIORITIES = List.of("high", "medium", "low");
 
     private List<Task> tasks = List.of();
 
@@ -53,8 +52,12 @@ public final class TodowriteTool implements Tool, Resettable {
         item.put("type", "object");
         ObjectNode properties = item.putObject("properties");
         properties.putObject("content").put("type", "string");
-        properties.putObject("status").put("type", "string");
-        properties.putObject("priority").put("type", "string");
+        ObjectNode status = properties.putObject("status");
+        status.put("type", "string");
+        status.putArray("enum").addAll(toTextArray(STATUSES));
+        ObjectNode priority = properties.putObject("priority");
+        priority.put("type", "string");
+        priority.putArray("enum").addAll(toTextArray(PRIORITIES));
         item.putArray("required").add("content").add("status").add("priority");
         schema.putArray("required").add("todos");
         return schema;
@@ -102,5 +105,13 @@ public final class TodowriteTool implements Tool, Resettable {
             o.put("priority", task.priority());
         }
         return arr.toString();
+    }
+
+    private static ArrayNode toTextArray(List<String> values) {
+        ArrayNode arr = JSON.createArrayNode();
+        for (String value : values) {
+            arr.add(value);
+        }
+        return arr;
     }
 }
