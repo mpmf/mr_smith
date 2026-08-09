@@ -1,6 +1,5 @@
 package com.mrsmith.chat;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.mrsmith.config.AgentCatalog;
 import com.mrsmith.config.AppConfig;
 import com.mrsmith.io.IO;
@@ -8,7 +7,6 @@ import com.mrsmith.provider.ChatMessage;
 import com.mrsmith.provider.Provider;
 import com.mrsmith.provider.ProviderException;
 import com.mrsmith.provider.ProviderFactory;
-import com.mrsmith.provider.ProviderResponse;
 import com.mrsmith.provider.Role;
 import com.mrsmith.provider.ToolCall;
 import com.mrsmith.provider.Usage;
@@ -18,10 +16,8 @@ import com.mrsmith.skill.SkillCatalog;
 import com.mrsmith.tool.SkillTool;
 import com.mrsmith.tool.TodowriteTool;
 import com.mrsmith.tool.Tool;
-import com.mrsmith.tool.ToolException;
 import com.mrsmith.tool.ToolRegistry;
 import com.mrsmith.tool.ToolRegistryFactory;
-import com.mrsmith.tool.ToolResult;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -34,7 +30,6 @@ public class ChatSession {
 
     private static final int WARN_THRESHOLD_PERCENT = 85;
     private static final int LIMIT_PERCENT = 100;
-    private static final int DEFAULT_MAX_TOOL_ROUNDS = 8;
 
     private final IO io;
     private final TranscriptWriter transcripts;
@@ -115,108 +110,30 @@ public class ChatSession {
     }
 
     private TurnResult runToolLoop() {
-        Accumulator acc = new Accumulator();
-        for (int round = 0; ; round++) {
-            List<ChatMessage> context = contextBuilder.messages();
-            ProviderResponse response = provider.send(context, toolRegistry.tools(),
-                    io::write, io::writeReasoning);
-            recordSend(response, acc);
-            ChatMessage message = response.message();
-            List<ToolCall> calls = message.toolCalls();
-            if (calls == null || calls.isEmpty()) {
-                return new TurnResult(message, new Usage(acc.prompt, acc.completion), acc.estimated);
-            }
-            recordToolCallMessage(message, calls);
-            if (round >= maxToolRounds()) {
-                String limitContent = "Tool round limit (" + maxToolRounds() + ") reached; answer without more tool calls.";
-                for (ToolCall call : calls) {
-                    appendToolResultMessage(call.id(), limitContent, false);
-                }
-                response = provider.send(contextBuilder.messages(), toolRegistry.tools(),
-                        io::write, io::writeReasoning);
-                recordSend(response, acc);
-                return new TurnResult(response.message(), new Usage(acc.prompt, acc.completion), acc.estimated);
-            }
-            for (ToolCall call : calls) {
-                ToolResult result = executeTool(call);
-                io.writeLine(statusLine(call, result));
-                appendToolResultMessage(call.id(), result.content(), result.error());
-            }
-        }
+        ToolLoop.LoopResult result = ToolLoop.run(contextBuilder, provider, toolRegistry.tools(),
+                io, maxToolRounds(), new ToolLoop.Sink() {
+                    @Override
+                    public void assistantWithToolCalls(ChatMessage message, List<ToolCall> calls) {
+                        history.add(message);
+                        contextBuilder.appendAssistantToolCalls(calls);
+                        for (ToolCall call : calls) {
+                            appendToolCall(call);
+                        }
+                    }
+
+                    @Override
+                    public void toolResult(String id, String content, boolean error) {
+                        history.add(new ChatMessage(Role.TOOL, content, null, null, id));
+                        contextBuilder.appendToolResult(id, content);
+                        appendToolResult(id, content, error);
+                    }
+                });
+        return new TurnResult(result.message(), result.usage(), result.estimated());
     }
 
     private int maxToolRounds() {
         Integer value = config.maxToolRounds();
-        return value == null ? DEFAULT_MAX_TOOL_ROUNDS : value;
-    }
-
-    private void recordSend(ProviderResponse response, Accumulator acc) {
-        acc.prompt += tokens(response.usage().promptTokens());
-        acc.completion += tokens(response.usage().completionTokens());
-        acc.estimated = acc.estimated || response.usageEstimated();
-    }
-
-    private int tokens(Integer value) {
-        return value == null ? 0 : value;
-    }
-
-    private void recordToolCallMessage(ChatMessage message, List<ToolCall> calls) {
-        history.add(message);
-        contextBuilder.appendAssistantToolCalls(calls);
-        for (ToolCall call : calls) {
-            appendToolCall(call);
-        }
-    }
-
-    private void appendToolResultMessage(String id, String content, boolean error) {
-        ChatMessage message = new ChatMessage(Role.TOOL, content, null, null, id);
-        history.add(message);
-        contextBuilder.appendToolResult(id, content);
-        appendToolResult(id, content, error);
-    }
-
-    private ToolResult executeTool(ToolCall call) {
-        Optional<Tool> found = toolRegistry.find(call.name());
-        if (found.isEmpty()) {
-            return new ToolResult("Unknown tool: " + call.name(), true);
-        }
-        Tool tool = found.get();
-        if (!tool.isReadOnly() && !confirm(call, tool)) {
-            return new ToolResult("User declined to run " + call.name() + ".", true);
-        }
-        try {
-            return tool.execute(call.arguments());
-        } catch (ToolException e) {
-            return new ToolResult(e.getMessage(), true);
-        }
-    }
-
-    private boolean confirm(ToolCall call, Tool tool) {
-        io.write("Run " + tool.name() + "(" + describe(call) + ") [y/N]? ");
-        String answer;
-        try {
-            answer = io.readLine();
-        } catch (IOException e) {
-            return false;
-        }
-        return answer != null && (answer.trim().equalsIgnoreCase("y")
-                || answer.trim().equalsIgnoreCase("yes"));
-    }
-
-    private String statusLine(ToolCall call, ToolResult result) {
-        return "tool: " + call.name() + "(" + describe(call) + ") -> "
-                + (result.error() ? "error" : "ok");
-    }
-
-    private String describe(ToolCall call) {
-        JsonNode args = call.arguments();
-        for (String key : List.of("command", "path", "filePath", "pattern", "url")) {
-            JsonNode value = args != null ? args.get(key) : null;
-            if (value != null && value.isTextual()) {
-                return value.asText();
-            }
-        }
-        return "";
+        return value == null ? ToolLoop.DEFAULT_MAX_TOOL_ROUNDS : value;
     }
 
     private void applyAgent() {
@@ -477,11 +394,5 @@ public class ChatSession {
     }
 
     private record TurnResult(ChatMessage message, Usage usage, boolean estimated) {
-    }
-
-    private static final class Accumulator {
-        int prompt;
-        int completion;
-        boolean estimated;
     }
 }
