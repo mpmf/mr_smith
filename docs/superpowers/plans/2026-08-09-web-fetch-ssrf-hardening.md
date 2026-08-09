@@ -257,15 +257,20 @@ class WebFetchToolTest {
     @Test
     void classifiesPrivateAndPublicHosts() {
         assertTrue(WebFetchTool.isPrivateHost("localhost"));
+        assertTrue(WebFetchTool.isPrivateHost("foo.localhost"));
         assertTrue(WebFetchTool.isPrivateHost("127.0.0.1"));
         assertTrue(WebFetchTool.isPrivateHost("10.0.0.5"));
         assertTrue(WebFetchTool.isPrivateHost("192.168.1.1"));
         assertTrue(WebFetchTool.isPrivateHost("172.16.0.1"));
         assertTrue(WebFetchTool.isPrivateHost("169.254.169.254"));
         assertTrue(WebFetchTool.isPrivateHost("::1"));
+        assertTrue(WebFetchTool.isPrivateHost("::"));
+        assertTrue(WebFetchTool.isPrivateHost("fe80::1"));
+        assertTrue(WebFetchTool.isPrivateHost("fc00::1"));
         assertTrue(WebFetchTool.isPrivateHost("0.0.0.0"));
         assertFalse(WebFetchTool.isPrivateHost("example.com"));
         assertFalse(WebFetchTool.isPrivateHost("api.openai.com"));
+        assertFalse(WebFetchTool.isPrivateHost("8.8.8.8"));
     }
 
     @Test
@@ -406,6 +411,35 @@ git commit -m "test: SSRF tests for web_fetch private-host approval"
 **Files:**
 - Modify: `src/main/java/com/mrsmith/tool/WebFetchTool.java`
 - Modify: `src/main/java/com/mrsmith/tool/ToolRegistry.java`
+- Modify: `src/test/java/com/mrsmith/tool/WebFetchToolTest.java`
+
+- [ ] **Step 0: Extend the classifier test with boundary cases**
+
+The classifier is the SSRF boundary, so pin it fully before implementing. In `src/test/java/com/mrsmith/tool/WebFetchToolTest.java`, update `classifiesPrivateAndPublicHosts` to cover the full matrix — localhost, `*.localhost`, IPv4 loopback/private/link-local/any-local, IPv6 loopback/any-local/link-local (`fe80::/10`)/site-local (`fc00::/7`), plus negative cases for plain hostnames and a public IP literal:
+
+```java
+    @Test
+    void classifiesPrivateAndPublicHosts() {
+        assertTrue(WebFetchTool.isPrivateHost("localhost"));
+        assertTrue(WebFetchTool.isPrivateHost("foo.localhost"));
+        assertTrue(WebFetchTool.isPrivateHost("127.0.0.1"));
+        assertTrue(WebFetchTool.isPrivateHost("10.0.0.5"));
+        assertTrue(WebFetchTool.isPrivateHost("192.168.1.1"));
+        assertTrue(WebFetchTool.isPrivateHost("172.16.0.1"));
+        assertTrue(WebFetchTool.isPrivateHost("169.254.169.254"));
+        assertTrue(WebFetchTool.isPrivateHost("::1"));
+        assertTrue(WebFetchTool.isPrivateHost("::"));
+        assertTrue(WebFetchTool.isPrivateHost("fe80::1"));
+        assertTrue(WebFetchTool.isPrivateHost("fc00::1"));
+        assertTrue(WebFetchTool.isPrivateHost("0.0.0.0"));
+        assertFalse(WebFetchTool.isPrivateHost("example.com"));
+        assertFalse(WebFetchTool.isPrivateHost("api.openai.com"));
+        assertFalse(WebFetchTool.isPrivateHost("8.8.8.8"));
+    }
+```
+
+Run: `mvn -q -Dtest=WebFetchToolTest test`
+Expected: still the same compilation failure as Task 1 (missing `WebFetchTool` constructors / `isPrivateHost`).
 
 - [ ] **Step 1: Replace WebFetchTool.java entirely**
 
