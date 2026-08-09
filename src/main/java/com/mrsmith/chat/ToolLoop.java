@@ -17,7 +17,7 @@ import java.util.Optional;
 
 public final class ToolLoop {
 
-    public static final int DEFAULT_MAX_TOOL_ROUNDS = 8;
+    public static final int DEFAULT_MAX_TOOL_ROUNDS = 32;
 
     public interface Sink {
         void assistantWithToolCalls(ChatMessage message, List<ToolCall> calls);
@@ -32,7 +32,7 @@ public final class ToolLoop {
     }
 
     public static LoopResult run(ContextBuilder context, Provider provider, List<Tool> tools,
-                                 IO io, int maxToolRounds, Sink sink) {
+                                 IO io, int maxToolRounds, ToolBudget budget, Sink sink) {
         Accumulator acc = new Accumulator();
         for (int round = 0; ; round++) {
             ProviderResponse response = provider.send(context.messages(), tools, io::write, io::writeReasoning);
@@ -44,21 +44,50 @@ public final class ToolLoop {
             }
             sink.assistantWithToolCalls(message, calls);
             if (round >= maxToolRounds) {
-                String limitContent = "Tool round limit (" + maxToolRounds + ") reached; answer without more tool calls.";
+                String limitContent = roundLimitMessage(maxToolRounds);
                 for (ToolCall call : calls) {
                     sink.toolResult(call.id(), limitContent, false);
                 }
-                ProviderResponse finalResponse = provider.send(context.messages(), tools, io::write, io::writeReasoning);
-                accumulate(acc, finalResponse);
-                return new LoopResult(finalResponse.message(), new Usage(acc.prompt, acc.completion), acc.estimated);
+                return finalAnswer(acc, context, provider, tools, io);
             }
-            for (ToolCall call : calls) {
+            boolean budgetStopped = false;
+            for (int i = 0; i < calls.size(); i++) {
+                ToolCall call = calls.get(i);
+                if (budget.exhausted()) {
+                    String content = budgetLimitMessage(budget);
+                    for (int j = i; j < calls.size(); j++) {
+                        sink.toolResult(calls.get(j).id(), content, false);
+                    }
+                    budgetStopped = true;
+                    break;
+                }
                 ToolResult result = executeTool(call, tools, io);
-                io.writeLine("tool: " + call.name() + "(" + describe(call) + ") -> "
+                budget.record();
+                io.writeToolExecution("tool: " + call.name() + "(" + describe(call) + ") -> "
                         + (result.error() ? "error" : "ok"));
                 sink.toolResult(call.id(), result.content(), result.error());
             }
+            if (budgetStopped) {
+                return finalAnswer(acc, context, provider, tools, io);
+            }
         }
+    }
+
+    private static LoopResult finalAnswer(Accumulator acc, ContextBuilder context, Provider provider,
+                                          List<Tool> tools, IO io) {
+        ProviderResponse finalResponse = provider.send(context.messages(), tools, io::write, io::writeReasoning);
+        accumulate(acc, finalResponse);
+        return new LoopResult(finalResponse.message(), new Usage(acc.prompt, acc.completion), acc.estimated);
+    }
+
+    private static String roundLimitMessage(int maxToolRounds) {
+        return "Tool round limit (" + maxToolRounds + ") reached. "
+                + "Give a brief status update and tell the user to send 'continue' if more work is needed.";
+    }
+
+    private static String budgetLimitMessage(ToolBudget budget) {
+        return "Session tool call budget exhausted (" + budget.used() + "/" + budget.limit() + "). "
+                + "Give a brief status update and tell the user to /reset (or send 'continue') if more work is needed.";
     }
 
     private static void accumulate(Accumulator acc, ProviderResponse response) {
@@ -97,7 +126,7 @@ public final class ToolLoop {
     }
 
     private static boolean confirm(ToolCall call, Tool tool, IO io) {
-        io.write("Run " + tool.name() + "(" + describe(call) + ") [y/N]? ");
+        io.writePrompt("Run " + tool.name() + "(" + describe(call) + ") [y/N]? ");
         String answer;
         try {
             answer = io.readLine();

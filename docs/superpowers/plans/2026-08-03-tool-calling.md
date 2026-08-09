@@ -4,7 +4,9 @@
 
 **Goal:** Let the model request actions (tool calls) that Mr Smith executes and feeds back, looping until a final answer, with per-agent tool opt-in and approval for destructive tools.
 
-**Architecture:** Add a `com.mrsmith.tool` package (Tool interface, ToolRegistry, six built-in tools). Extend the OpenAI-compatible wire layer (`ChatMessage`/`Role`/`SseParser`/`OpenAiCompatibleProvider`) to carry `tools`, `tool_calls`, and `role:tool` messages. Add an inner tool loop to `ChatSession` (8-round cap), per-agent `tools` config, and `tool_call`/`tool_result` transcript records.
+**Architecture:** Add a `com.mrsmith.tool` package (Tool interface, ToolRegistry, six built-in tools). Extend the OpenAI-compatible wire layer (`ChatMessage`/`Role`/`SseParser`/`OpenAiCompatibleProvider`) to carry `tools`, `tool_calls`, and `role:tool` messages. Add an inner tool loop to `ChatSession` (capped per turn by `maxToolRounds`, default 32, plus an optional per-session `maxToolCallsPerSession` budget shared with sub-agents), per-agent `tools` config, and `tool_call`/`tool_result` transcript records.
+
+> **Later updates (2026-08-09):** The round-limit default was raised from 8 to 32 (`ToolLoop.DEFAULT_MAX_TOOL_ROUNDS`), the round-limit cutoff message now asks the model to summarize and suggest `continue`, and an optional session-scoped `ToolBudget` (`maxToolCallsPerSession`) was added — warn at 80%, graceful stop on exhaustion, shared between the main loop and sub-agents, reset on `/reset`/agent switch. See the design spec for details.
 
 **Tech Stack:** Java 21, JUnit 5 (Jupiter), Jackson, JDK `java.net.http.HttpClient`, OkHttp MockWebServer (test), picocli.
 

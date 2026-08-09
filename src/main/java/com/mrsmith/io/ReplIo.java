@@ -8,6 +8,8 @@ import java.io.PrintStream;
 public class ReplIo implements IO {
 
     private static final String YELLOW = "\u001B[33m";
+    private static final String LIGHT_BLUE = "\u001B[94m";
+    private static final String LIGHT_GREEN = "\u001B[92m";
     private static final String RESET = "\u001B[0m";
 
     private final BufferedReader reader;
@@ -51,5 +53,34 @@ public class ReplIo implements IO {
             out.print(text);
         }
         out.flush();
+    }
+
+    @Override
+    public void writeToolExecution(String text) {
+        if (colorEnabled) {
+            out.print(LIGHT_BLUE);
+            out.println("");
+            out.print(text);
+            out.println("");
+            out.print(RESET);
+        } else {
+            out.println("");
+            out.print(text);
+            out.println("");
+        }
+        out.flush();
+    }
+
+    @Override
+    public void writePrompt(String text) {
+        out.println("");
+        if (colorEnabled) {
+            out.print(LIGHT_GREEN);
+            out.print(text);
+            out.print(RESET);
+        } else {
+            out.print(text);
+        }
+        out.println("");
     }
 }

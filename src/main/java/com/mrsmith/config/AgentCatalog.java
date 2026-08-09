@@ -61,6 +61,10 @@ public class AgentCatalog {
             if (agent.maxToolRounds() != null && agent.maxToolRounds() <= 0) {
                 throw new ConfigException("Agent '" + agent.name() + "' must have a positive maxToolRounds.");
             }
+            if (agent.maxToolCallsPerSession() != null && agent.maxToolCallsPerSession() <= 0) {
+                throw new ConfigException("Agent '" + agent.name()
+                        + "' must have a positive maxToolCallsPerSession.");
+            }
             for (String tool : agent.tools()) {
                 if (!ToolRegistry.builtinNames().contains(tool)) {
                     throw new ConfigException("Agent '" + agent.name() + "' references unknown tool '" + tool + "'");
@@ -88,7 +92,7 @@ public class AgentCatalog {
         ProviderConfig provider = providers.get(agent.provider());
         return new AppConfig(provider.apiKey(), provider.baseUrl(), agent.model(),
                 agent.systemPrompt(), agent.maxContextTokens(), includeUsage, sessionsDir, agent.tools(),
-                agent.maxToolRounds());
+                agent.maxToolRounds(), agent.maxToolCallsPerSession());
     }
 
     public String defaultName() {

@@ -50,6 +50,7 @@ public class ChatSession {
     private Provider provider;
     private ToolRegistry toolRegistry;
     private SubAgentRunner subAgentRunner;
+    private ToolBudget toolBudget;
 
     public ChatSession(IO io, TranscriptWriter transcripts, ContextBuilder contextBuilder,
                        AgentCatalog agents, ProviderFactory providerFactory,
@@ -112,7 +113,7 @@ public class ChatSession {
 
     private TurnResult runToolLoop() {
         ToolLoop.LoopResult result = ToolLoop.run(contextBuilder, provider, toolRegistry.tools(),
-                io, maxToolRounds(), new ToolLoop.Sink() {
+                io, maxToolRounds(), toolBudget, new ToolLoop.Sink() {
                     @Override
                     public void assistantWithToolCalls(ChatMessage message, List<ToolCall> calls) {
                         history.add(message);
@@ -142,7 +143,7 @@ public class ChatSession {
         provider = providerFactory.create(config);
         subAgentRunner = new SubAgentRunner(agents, providerFactory,
                 cfg -> ToolRegistry.with(cfg.tools(), skills, io, null),
-                io, tracker, () -> config, () -> currentSessionId);
+                io, tracker, () -> config, () -> currentSessionId, () -> toolBudget);
         toolRegistry = toolRegistryFactory.create(config, skills, io, subAgentRunner);
     }
 
@@ -151,6 +152,7 @@ public class ChatSession {
         tracker.reset();
         warned85 = false;
         warned100 = false;
+        toolBudget = new ToolBudget(config.maxToolCallsPerSession(), io);
         contextBuilder.start(composeSystemPrompt(config.systemPrompt()));
         toolRegistry.resetSession();
         subAgentRunner.reset();
@@ -395,6 +397,9 @@ public class ChatSession {
                     config.maxContextTokens(), pctOfMax()));
         }
         report.append(String.format(Locale.US, "%n  history: %d messages", history.size()));
+        if (toolBudget != null && !toolBudget.isUnlimited()) {
+            report.append(String.format(Locale.US, "%n  tool calls: %d/%d", toolBudget.used(), toolBudget.limit()));
+        }
         return report.toString();
     }
 

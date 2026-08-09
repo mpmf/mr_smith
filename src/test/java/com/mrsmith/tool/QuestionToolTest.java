@@ -46,6 +46,16 @@ class QuestionToolTest {
         public void writeReasoning(String text) {
             lines.add(text);
         }
+
+        @Override
+        public void writeToolExecution(String line) {
+            lines.add(line);    
+        }
+
+        @Override
+        public void writePrompt(String line) {
+            lines.add(line);    
+        }
     }
 
     private QuestionTool tool(StubIo io) {

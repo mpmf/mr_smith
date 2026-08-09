@@ -42,6 +42,14 @@ class ToolRegistryTest {
         @Override
         public void writeReasoning(String text) {
         }
+
+        @Override
+        public void writeToolExecution(String line) {
+        }
+
+        @Override
+        public void writePrompt(String line) {
+        }
     }
 
     private final IO io = new IoStub();

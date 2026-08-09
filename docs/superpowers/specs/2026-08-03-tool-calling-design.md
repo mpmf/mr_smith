@@ -21,7 +21,10 @@ automatically.
 
 - OpenAI-compatible `tools`/`tool_calls`/`role:tool` wire format (the provider
   already speaks this dialect).
-- An inner tool loop in `ChatSession` capped at 8 rounds per user turn.
+- An inner tool loop in `ChatSession` capped at 32 rounds per user turn
+  (configurable per agent via `maxToolRounds`, default 32).
+- An optional per-session tool budget (`maxToolCallsPerSession`) shared between
+  the main loop and sub-agents, with an 80% warning and graceful exhaustion.
 - Six built-in tools: `shell`, `write_file`, `read_file`, `list_dir`, `glob`,
   `web_fetch`.
 - Per-agent opt-in: agents declare which tools they may use in `config.json`.
@@ -166,10 +169,11 @@ loop:
   message = response.message()
   if message.toolCalls() empty:
       final = message; break
-  if rounds >= 8:
+  if rounds >= maxToolRounds:                 // default 32
       for each call in message.toolCalls():
-          context += ChatMessage(TOOL, "Tool round limit (8) reached; "
-              + "answer without more tool calls.", toolCallId = call.id())
+          context += ChatMessage(TOOL, "Tool round limit (<n>) reached. "
+              + "Give a brief status update and tell the user to send 'continue' "
+              + "if more work is needed.", toolCallId = call.id())
       response = provider.send(context, registry.tools(), io::write, io::writeReasoning)
       final = response.message()          // reply text used; any tool calls dropped
       break
@@ -177,10 +181,14 @@ loop:
   contextBuilder.appendAssistantToolCalls(message.toolCalls())
   transcript += one tool_call record per call
   for each call:
+      if budget.exhausted():               // session budget (see below)
+          for each remaining call: context += ChatMessage(TOOL, budgetMessage, toolCallId = call.id())
+          response = provider.send(...); final = response.message(); break
       tool = registry.find(call.name())
       if tool absent:  result = ToolResult("Unknown tool: <name>", true)
       else if !tool.isReadOnly() and not confirmed: result = ToolResult("User declined to run <name>.", true)
       else: result = run(tool, call)        // ToolException -> error result
+      budget.record()                       // count executed calls; warn once at 80%
       io.writeLine("tool: <name>(<summary>) -> ok|error")   // compact status
       history += ChatMessage(TOOL, result.content(), null, null, call.id())
       contextBuilder.appendToolResult(call.id(), result.content())
@@ -194,6 +202,22 @@ real `tool_call_id`, which strict providers require to reference a prior
 assistant tool_call), sends one final message asking the model to answer without
 further tool calls, and uses that reply as final (dropping any tool calls in
 it). This guarantees the loop always terminates.
+
+### Session tool budget
+
+`maxToolCallsPerSession` (optional per-agent, unlimited by default) bounds the
+total number of **executed** tool calls across a session — the main loop *and*
+sub-agents draw from the same `ToolBudget` instance, created fresh on `/reset`
+and agent switches.
+
+- `ToolBudget.record()` increments after each executed call and prints a one-time
+  warning when usage crosses 80% of the limit (`Warning: tool call budget N% used
+  (x/y) — consider /reset`).
+- When `ToolBudget.exhausted()` is true before a call, the loop appends a `TOOL`
+  result for each pending call (`"Session tool call budget exhausted (x/y). Give
+  a brief status update and tell the user to /reset (or send 'continue') if more
+  work is needed."`), sends one final message, and ends the turn gracefully.
+- `/usage` reports the current count against the limit (`tool calls: x/y`).
 
 Final answer handling (history, `contextBuilder.appendAssistant`,
 `appendAssistant` transcript, usage line, warnings) is unchanged.
@@ -216,12 +240,14 @@ accumulated total.
 
 ### Config
 
-`AgentConfig` gains `List<String> tools` (default empty). `ConfigLoader`
-parses an optional per-agent `tools` array of strings. `AgentCatalog` validates
-each tool name against the built-in registry's known names at load; unknown
-names throw `ConfigException` with the agent name. `AppConfig` carries the tool
-names; `AgentCatalog.resolve` merges them; `ChatSession.applyAgent()` builds the
-`ToolRegistry`.
+`AgentConfig` gains `List<String> tools` (default empty), `Integer maxToolRounds`
+(default 32 when unset), and `Integer maxToolCallsPerSession` (null = unlimited).
+`ConfigLoader` parses the optional per-agent `tools` array, `maxToolRounds`, and
+`maxToolCallsPerSession`. `AgentCatalog` validates each tool name against the
+built-in registry's known names at load and rejects non-positive round/budget
+limits; unknown names throw `ConfigException` with the agent name. `AppConfig`
+carries the tool names and limits; `AgentCatalog.resolve` merges them;
+`ChatSession.applyAgent()` builds the `ToolRegistry` and `ToolBudget`.
 
 Example agent:
 
@@ -279,10 +305,15 @@ void appendToolResult(UUID sessionId, String id, String content, boolean error) 
 - Timeouts (shell 30s, web_fetch 10s) produce error results, not crashes.
 - Provider errors during any send keep the existing behavior (partial content
   paths, `ProviderException` handling) unchanged.
-- Round-limit: after 8 tool rounds, the session appends a `TOOL` message
-  instructing the model to answer without more tool calls, sends once more, and
-  uses that reply as final — dropping any tool calls it still contains. The loop
-  is guaranteed to terminate.
+- Round-limit: after `maxToolRounds` tool rounds (default 32), the session
+  appends a `TOOL` message instructing the model to give a status and tell the
+  user to send `continue`, sends once more, and uses that reply as final —
+  dropping any tool calls it still contains. The loop is guaranteed to
+  terminate.
+- Session budget exhaustion: when `maxToolCallsPerSession` is configured and the
+  budget runs out mid-turn, pending calls get a `TOOL` result explaining the
+  budget is exhausted, one final send produces a status reply, and the turn ends
+  gracefully. `/reset` starts a fresh budget.
 
 ## Testing
 
@@ -299,7 +330,12 @@ void appendToolResult(UUID sessionId, String id, String content, boolean error) 
   path, redirect, timeout/size cap).
 - `ChatSessionTest` (extend `FakeProvider`): tool loop executes and returns
   result to model; approval prompt (yes runs, no declines); unknown tool name;
-  round-limit stops the loop; transcript has tool_call/tool_result records;
-  usage accumulates across rounds; no-tools agent unchanged.
-- `ConfigLoaderTest`/`AgentCatalogTest`: `tools` parsing, unknown-tool
-  `ConfigException`, empty-tools default.
+  round-limit stops the loop; session budget stops the loop and warns at 80%;
+  `/reset` grants a fresh budget; `/usage` reports the budget; transcript has
+  tool_call/tool_result records; usage accumulates across rounds; no-tools agent
+  unchanged.
+- `SubAgentRunnerTest`: sub-agent tool calls count against the shared session
+  budget.
+- `ConfigLoaderTest`/`AgentCatalogTest`: `tools` parsing, `maxToolRounds` /
+  `maxToolCallsPerSession` parsing and defaults, unknown-tool `ConfigException`,
+  non-positive limit `ConfigException`, empty-tools default.

@@ -497,8 +497,12 @@ class ChatSessionTest {
         provider.alwaysCall("read_file", JSON.readTree("{\"path\":\"a.txt\"}"));
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
         StubIo io = new StubIo(List.of("hello", "/exit"));
+        AgentCatalog catalog = new AgentCatalog(
+                List.of(new ProviderConfig("p", "sk-test", "https://example.com/v1")),
+                List.of(new AgentConfig("a", "p", "m", null, null, 8)),
+                "a", true, Path.of("sessions"));
         ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
-                catalog(), new FakeProviderFactory(provider), registryFactory, emptySkills(), "a");
+                catalog, new FakeProviderFactory(provider), registryFactory, emptySkills(), "a");
         session.run();
         assertEquals(10, provider.calls);
         List<ChatMessage> lastSend = provider.receivedHistories.get(provider.receivedHistories.size() - 1);
@@ -777,6 +781,72 @@ class ChatSessionTest {
     }
 
     @Test
+    void stopsAtSessionToolBudget() throws Exception {
+        FakeTool tool = new FakeTool("read_file", true, new ToolResult("data", false));
+        ToolRegistryFactory registryFactory = (config, catalog, io, taskRunner) -> new ToolRegistry(List.of(tool));
+        FakeToolProvider provider = new FakeToolProvider();
+        provider.alwaysCall("read_file", JSON.readTree("{\"path\":\"a.txt\"}"));
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/exit"));
+        AgentCatalog catalog = new AgentCatalog(
+                List.of(new ProviderConfig("p", "sk-test", "https://example.com/v1")),
+                List.of(new AgentConfig("a", "p", "m", null, null, 8, 3)),
+                "a", true, Path.of("sessions"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog, new FakeProviderFactory(provider), registryFactory, emptySkills(), "a");
+        session.run();
+        assertEquals(3, tool.calls);
+        assertEquals(5, provider.calls);
+        List<ChatMessage> lastSend = provider.receivedHistories.get(provider.receivedHistories.size() - 1);
+        ChatMessage last = lastSend.get(lastSend.size() - 1);
+        assertEquals(Role.TOOL, last.role());
+        assertTrue(last.content().contains("budget exhausted"));
+        assertTrue(last.content().contains("(3/3)"));
+        assertTrue(transcripts.toolResultContents.stream().anyMatch(c -> c.contains("budget exhausted")));
+        assertTrue(io.lines.stream().anyMatch(l -> l.startsWith("Warning:") && l.contains("budget")));
+    }
+
+    @Test
+    void resetClearsSessionToolBudget() throws Exception {
+        FakeTool tool = new FakeTool("read_file", true, new ToolResult("data", false));
+        ToolRegistryFactory registryFactory = (config, catalog, io, taskRunner) -> new ToolRegistry(List.of(tool));
+        FakeToolProvider provider = new FakeToolProvider();
+        provider.alwaysCall("read_file", JSON.readTree("{\"path\":\"a.txt\"}"));
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/reset", "again", "/exit"));
+        AgentCatalog catalog = new AgentCatalog(
+                List.of(new ProviderConfig("p", "sk-test", "https://example.com/v1")),
+                List.of(new AgentConfig("a", "p", "m", null, null, 8, 3)),
+                "a", true, Path.of("sessions"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog, new FakeProviderFactory(provider), registryFactory, emptySkills(), "a");
+        session.run();
+        // First turn exhausts the 3-call budget; /reset grants a fresh budget, so 3 more run.
+        assertEquals(6, tool.calls);
+        assertEquals(10, provider.calls);
+        long warnings = io.lines.stream().filter(l -> l.startsWith("Warning:") && l.contains("budget")).count();
+        assertEquals(2, warnings);
+    }
+
+    @Test
+    void usageReportShowsToolBudget() throws Exception {
+        FakeTool tool = new FakeTool("read_file", true, new ToolResult("data", false));
+        ToolRegistryFactory registryFactory = (config, catalog, io, taskRunner) -> new ToolRegistry(List.of(tool));
+        FakeToolProvider provider = new FakeToolProvider();
+        provider.alwaysCall("read_file", JSON.readTree("{\"path\":\"a.txt\"}"));
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/usage", "/exit"));
+        AgentCatalog catalog = new AgentCatalog(
+                List.of(new ProviderConfig("p", "sk-test", "https://example.com/v1")),
+                List.of(new AgentConfig("a", "p", "m", null, null, 8, 3)),
+                "a", true, Path.of("sessions"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog, new FakeProviderFactory(provider), registryFactory, emptySkills(), "a");
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("tool calls: 3/3")));
+    }
+
+    @Test
     void taskToolResultFeedsBack() throws Exception {
         TaskRunner fakeRunner = (prompt, agent, taskId) -> new TaskResult("subagent-1", "all done", false);
         ToolRegistryFactory registryFactory = (config, catalog, io, taskRunner) ->
@@ -873,6 +943,16 @@ class ChatSessionTest {
         @Override
         public void writeReasoning(String text) {
             lines.add(text);
+        }
+
+        @Override
+        public void writeToolExecution(String line) {
+            lines.add(line);    
+        }
+
+        @Override
+        public void writePrompt(String line) {
+            lines.add(line);    
         }
     }
 

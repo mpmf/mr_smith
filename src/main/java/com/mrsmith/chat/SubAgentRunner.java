@@ -30,6 +30,7 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
     private final UsageTracker tracker;
     private final Supplier<AppConfig> currentConfig;
     private final Supplier<UUID> sessionId;
+    private final Supplier<ToolBudget> budget;
     private final SubAgentTranscriptStore store;
 
     private int counter;
@@ -37,7 +38,7 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
     public SubAgentRunner(AgentCatalog agents, ProviderFactory providerFactory,
                           Function<AppConfig, ToolRegistry> toolsBuilder, IO io,
                           UsageTracker tracker, Supplier<AppConfig> currentConfig,
-                          Supplier<UUID> sessionId) {
+                          Supplier<UUID> sessionId, Supplier<ToolBudget> budget) {
         this.agents = agents;
         this.providerFactory = providerFactory;
         this.toolsBuilder = toolsBuilder;
@@ -45,6 +46,7 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
         this.tracker = tracker;
         this.currentConfig = currentConfig;
         this.sessionId = sessionId;
+        this.budget = budget;
         this.store = new SubAgentTranscriptStore(agents.sessionsDir(), sessionId);
     }
 
@@ -103,7 +105,7 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
                 transcripts.appendUser(sid, prompt);
             }
             ToolLoop.LoopResult result = ToolLoop.run(context, provider, tools.tools(),
-                    io, maxToolRounds(config), sinkFor(context, transcripts));
+                    io, maxToolRounds(config), budget.get(), sinkFor(context, transcripts));
             if (transcripts != null) {
                 transcripts.appendAssistant(sid, result.message().content(),
                         result.message().thinking(), result.usage(), result.estimated());

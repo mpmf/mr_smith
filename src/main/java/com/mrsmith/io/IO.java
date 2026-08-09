@@ -11,4 +11,8 @@ public interface IO {
     void writeLine(String line);
 
     void writeReasoning(String text);
+
+    void writeToolExecution(String text);
+
+    void writePrompt(String text);
 }

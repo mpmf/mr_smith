@@ -223,6 +223,32 @@ class ConfigLoaderTest {
         assertEquals(null, catalog.resolve("a").maxToolRounds());
     }
 
+    @Test
+    void parsesMaxToolCallsPerSessionPerAgent() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "p", "apiKey": "sk-x", "baseUrl": "https://example.com/v1" } ],
+                  "agents": [ { "name": "a", "provider": "p", "model": "m", "maxToolCallsPerSession": 200 } ],
+                  "defaultAgent": "a"
+                }
+                """);
+        AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
+        assertEquals(200, catalog.resolve("a").maxToolCallsPerSession());
+    }
+
+    @Test
+    void maxToolCallsPerSessionDefaultsToNull() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "p", "apiKey": "sk-x", "baseUrl": "https://example.com/v1" } ],
+                  "agents": [ { "name": "a", "provider": "p", "model": "m" } ],
+                  "defaultAgent": "a"
+                }
+                """);
+        AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
+        assertEquals(null, catalog.resolve("a").maxToolCallsPerSession());
+    }
+
     private Path noFile() {
         return tempDir.resolve("missing.json");
     }

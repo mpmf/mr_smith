@@ -139,4 +139,24 @@ class AgentCatalogTest {
         AgentCatalog catalog = new AgentCatalog(List.of(provider), List.of(withRounds), "coder", true, Path.of("/tmp/s"));
         assertEquals(5, catalog.resolve("coder").maxToolRounds());
     }
+
+    @Test
+    void nonPositiveMaxToolCallsPerSessionThrows() {
+        AgentConfig bad = new AgentConfig("coder", "opencode", "model-x", null, null, null, 0);
+        assertThrows(ConfigException.class,
+                () -> new AgentCatalog(List.of(provider), List.of(bad), "coder", true, Path.of("/tmp/s")));
+    }
+
+    @Test
+    void resolveCarriesMaxToolCallsPerSession() {
+        AgentConfig withBudget = new AgentConfig("coder", "opencode", "model-x", null, null, null, 200);
+        AgentCatalog catalog = new AgentCatalog(List.of(provider), List.of(withBudget), "coder", true, Path.of("/tmp/s"));
+        assertEquals(200, catalog.resolve("coder").maxToolCallsPerSession());
+    }
+
+    @Test
+    void maxToolCallsPerSessionDefaultsToNull() {
+        AgentCatalog catalog = new AgentCatalog(List.of(provider), List.of(agent), "coder", true, Path.of("/tmp/s"));
+        assertEquals(null, catalog.resolve("coder").maxToolCallsPerSession());
+    }
 }

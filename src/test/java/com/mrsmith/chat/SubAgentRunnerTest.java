@@ -56,7 +56,7 @@ class SubAgentRunnerTest {
         ProviderFactory factory = new FakeProviderFactory(provider);
         UsageTracker tracker = new UsageTracker();
         return new SubAgentRunner(catalog, factory, cfg -> tools, io, tracker,
-                () -> catalog.resolve("a"), () -> sessionId);
+                () -> catalog.resolve("a"), () -> sessionId, () -> new ToolBudget(null, io));
     }
 
     private List<String> readSubAgentFile(int n) throws IOException {
@@ -89,6 +89,16 @@ class SubAgentRunnerTest {
         @Override
         public void writeReasoning(String text) {
             lines.add(text);
+        }
+
+        @Override
+        public void writeToolExecution(String line) {
+            lines.add(line);    
+        }
+
+        @Override
+        public void writePrompt(String line) {
+            lines.add(line);    
         }
     }
 
@@ -128,6 +138,24 @@ class SubAgentRunnerTest {
         @Override
         public Provider create(com.mrsmith.config.AppConfig config) {
             return provider;
+        }
+    }
+
+    static class AlwaysCallProvider implements Provider {
+        final ToolCall call;
+        int calls = 0;
+
+        AlwaysCallProvider(String name, JsonNode args) {
+            this.call = new ToolCall("call_x", name, args);
+        }
+
+        @Override
+        public ProviderResponse send(List<ChatMessage> history, List<Tool> tools, Consumer<String> tokenSink,
+                                     Consumer<String> reasoningSink) {
+            calls++;
+            return new ProviderResponse(
+                    new ChatMessage(Role.ASSISTANT, null, null, List.of(call), null),
+                    new Usage(10, 5), false);
         }
     }
 
@@ -278,7 +306,7 @@ class SubAgentRunnerTest {
         AgentCatalog catalog = catalog();
         SubAgentRunner runner = new SubAgentRunner(catalog, new FakeProviderFactory(new FakeProvider()),
                 cfg -> new ToolRegistry(List.of()), new StubIo(List.of()), tracker,
-                () -> catalog.resolve("a"), () -> sessionId);
+                () -> catalog.resolve("a"), () -> sessionId, () -> new ToolBudget(null, new StubIo(List.of())));
         runner.run("x", null, null);
         assertEquals(10, tracker.promptTokens());
         assertEquals(5, tracker.completionTokens());
@@ -290,9 +318,28 @@ class SubAgentRunnerTest {
         AgentCatalog catalog = catalog();
         SubAgentRunner runner = new SubAgentRunner(catalog, new FakeProviderFactory(new FakeProvider()),
                 cfg -> new ToolRegistry(List.of()), new StubIo(List.of()), new UsageTracker(),
-                () -> catalog.resolve("a"), () -> null);
+                () -> catalog.resolve("a"), () -> null, () -> new ToolBudget(null, new StubIo(List.of())));
         TaskResult result = runner.run("x", null, null);
         assertFalse(result.error());
         assertEquals("subagent-1", result.id());
+    }
+
+    @Test
+    void subAgentCallsCountAgainstSharedBudget() throws Exception {
+        FakeTool readFile = new FakeTool("read_file", true, new ToolResult("contents", false));
+        ToolRegistry tools = new ToolRegistry(List.of(readFile));
+        AlwaysCallProvider provider = new AlwaysCallProvider("read_file", JSON.readTree("{\"path\":\"a.txt\"}"));
+        StubIo io = new StubIo(List.of());
+        ToolBudget budget = new ToolBudget(3, io);
+        Files.createDirectories(tempDir.resolve(sessionId.toString()));
+        AgentCatalog catalog = catalog();
+        SubAgentRunner runner = new SubAgentRunner(catalog, new FakeProviderFactory(provider),
+                cfg -> tools, io, new UsageTracker(), () -> catalog.resolve("a"), () -> sessionId,
+                () -> budget);
+        TaskResult result = runner.run("do it", null, null);
+        assertFalse(result.error());
+        assertEquals(3, readFile.calls);
+        assertEquals(3, budget.used());
+        assertTrue(result.message() == null || !result.message().contains("round limit"));
     }
 }

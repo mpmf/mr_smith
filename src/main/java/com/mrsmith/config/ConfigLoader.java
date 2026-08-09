@@ -95,6 +95,7 @@ public final class ConfigLoader {
                         node.path("systemPrompt").asText(null),
                         node.hasNonNull("maxContextTokens") ? node.get("maxContextTokens").asInt() : null,
                         node.hasNonNull("maxToolRounds") ? node.get("maxToolRounds").asInt() : null,
+                        node.hasNonNull("maxToolCallsPerSession") ? node.get("maxToolCallsPerSession").asInt() : null,
                         parseTools(node)));
             }
         }
