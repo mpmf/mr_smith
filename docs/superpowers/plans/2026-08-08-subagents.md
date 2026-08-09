@@ -127,13 +127,13 @@ Append to `src/test/java/com/mrsmith/chat/ChatSessionTest.java`:
         ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
                 catalog, new FakeProviderFactory(provider), registryFactory, emptySkills(), "a");
         session.run();
-        assertEquals(3, provider.calls);
+        assertEquals(4, provider.calls);
         List<ChatMessage> lastSend = provider.receivedHistories.get(provider.receivedHistories.size() - 1);
         assertTrue(lastSend.get(lastSend.size() - 1).content().contains("round limit (2)"));
     }
 ```
 
-Note: `new AgentConfig("a", "p", "m", null, null, 2)` uses the new 6-arg convenience constructor `(name, provider, model, systemPrompt, maxContextTokens, Integer maxToolRounds)`.
+Note: `new AgentConfig("a", "p", "m", null, null, 2)` uses the new 6-arg convenience constructor `(name, provider, model, systemPrompt, maxContextTokens, Integer maxToolRounds)`. The expected call count is L+2 (L tool rounds + the limit-detection send + the final limit-injection send): limit 2 → 4 calls (the default-8 case yields 10, matching the existing `stopsAtToolRoundLimit` test).
 
 - [ ] **Step 2: Run tests to verify they fail**
 
