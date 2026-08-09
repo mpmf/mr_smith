@@ -72,4 +72,27 @@ class SubAgentTranscriptStoreTest {
         assertEquals("subagent-1.jsonl", store().file(1).getFileName().toString());
         assertEquals("subagent-2.jsonl", store().file(2).getFileName().toString());
     }
+
+    @Test
+    void readHandlesMissingFieldsAndSkipsSkillLoad() throws IOException {
+        Files.createDirectories(tempDir.resolve(sessionId.toString()));
+        SubAgentTranscriptStore store = store();
+        TranscriptWriter writer = store.writer(1);
+        writer.start(sessionId);
+        writer.appendUser(sessionId, "task");
+        writer.appendToolCall(sessionId, "c1", "read_file", null);
+        writer.appendToolResult(sessionId, "c1", "out", false);
+        writer.appendSkillLoad(sessionId, "coding");
+        writer.appendAssistant(sessionId, "answer", null, null, false);
+
+        List<ChatMessage> messages = store.read(1);
+        assertEquals(4, messages.size());
+        assertEquals(Role.TOOL, messages.get(2).role());
+        ToolCall call = messages.get(1).toolCalls().get(0);
+        assertEquals("c1", call.id());
+        assertEquals("read_file", call.name());
+        assertNull(call.arguments());
+        assertEquals(Role.ASSISTANT, messages.get(3).role());
+        assertNull(messages.get(3).thinking());
+    }
 }
