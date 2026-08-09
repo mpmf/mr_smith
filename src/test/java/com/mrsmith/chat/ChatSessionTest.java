@@ -496,7 +496,7 @@ class ChatSessionTest {
         FakeToolProvider provider = new FakeToolProvider();
         provider.alwaysCall("read_file", JSON.readTree("{\"path\":\"a.txt\"}"));
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        StubIo io = new StubIo(List.of("hello", "/exit"));
+        StubIo io = new StubIo(List.of("hello", "n", "/exit"));
         AgentCatalog catalog = new AgentCatalog(
                 List.of(new ProviderConfig("p", "sk-test", "https://example.com/v1")),
                 List.of(new AgentConfig("a", "p", "m", null, null, 8)),
@@ -767,7 +767,7 @@ class ChatSessionTest {
         FakeToolProvider provider = new FakeToolProvider();
         provider.alwaysCall("read_file", JSON.readTree("{\"path\":\"a.txt\"}"));
         FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
-        StubIo io = new StubIo(List.of("hello", "/exit"));
+        StubIo io = new StubIo(List.of("hello", "n", "/exit"));
         AgentCatalog catalog = new AgentCatalog(
                 List.of(new ProviderConfig("p", "sk-test", "https://example.com/v1")),
                 List.of(new AgentConfig("a", "p", "m", null, null, 2)),
@@ -778,6 +778,26 @@ class ChatSessionTest {
         assertEquals(4, provider.calls);
         List<ChatMessage> lastSend = provider.receivedHistories.get(provider.receivedHistories.size() - 1);
         assertTrue(lastSend.get(lastSend.size() - 1).content().contains("round limit (2)"));
+    }
+
+    @Test
+    void continuesToolRoundsWhenUserExtends() throws Exception {
+        FakeTool tool = new FakeTool("read_file", true, new ToolResult("data", false));
+        ToolRegistryFactory registryFactory = (config, catalog, io, taskRunner) -> new ToolRegistry(List.of(tool));
+        FakeToolProvider provider = new FakeToolProvider();
+        provider.alwaysCall("read_file", JSON.readTree("{\"path\":\"a.txt\"}"));
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "y", "/exit"));
+        AgentCatalog catalog = new AgentCatalog(
+                List.of(new ProviderConfig("p", "sk-test", "https://example.com/v1")),
+                List.of(new AgentConfig("a", "p", "m", null, null, 2)),
+                "a", true, Path.of("sessions"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog, new FakeProviderFactory(provider), registryFactory, emptySkills(), "a");
+        session.run();
+        assertEquals(7, provider.calls);
+        assertEquals(5, tool.calls);
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("Continue with 2 more tool rounds")));
     }
 
     @Test

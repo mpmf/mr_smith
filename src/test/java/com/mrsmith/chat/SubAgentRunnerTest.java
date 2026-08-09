@@ -342,4 +342,29 @@ class SubAgentRunnerTest {
         assertEquals(3, budget.used());
         assertTrue(result.message() == null || !result.message().contains("round limit"));
     }
+
+    @Test
+    void subAgentContinuesToolRoundsWhenUserExtends() throws Exception {
+        AgentCatalog catalog = new AgentCatalog(
+                List.of(new ProviderConfig("p", "sk-test", "https://example.com/v1")),
+                List.of(new AgentConfig("a", "p", "m", null, null, 2)),
+                "a", true, tempDir);
+        FakeTool readFile = new FakeTool("read_file", true, new ToolResult("contents", false));
+        ToolRegistry tools = new ToolRegistry(List.of(readFile));
+        FakeProvider provider = new FakeProvider(
+                new ToolCall("c1", "read_file", JSON.readTree("{}")),
+                new ToolCall("c2", "read_file", JSON.readTree("{}")),
+                new ToolCall("c3", "read_file", JSON.readTree("{}")),
+                new ToolCall("c4", "read_file", JSON.readTree("{}")),
+                new ToolCall("c5", "read_file", JSON.readTree("{}")),
+                new ToolCall("c6", "read_file", JSON.readTree("{}")));
+        StubIo io = new StubIo(List.of("y", "n"));
+        Files.createDirectories(tempDir.resolve(sessionId.toString()));
+        SubAgentRunner runner = new SubAgentRunner(catalog, new FakeProviderFactory(provider),
+                cfg -> tools, io, new UsageTracker(), () -> catalog.resolve("a"), () -> sessionId,
+                () -> new ToolBudget(null, io));
+        TaskResult result = runner.run("do it", null, null);
+        assertFalse(result.error());
+        assertEquals(5, readFile.calls);
+    }
 }

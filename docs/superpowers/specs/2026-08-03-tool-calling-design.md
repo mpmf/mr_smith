@@ -170,13 +170,14 @@ loop:
   if message.toolCalls() empty:
       final = message; break
   if rounds >= maxToolRounds:                 // default 32
-      for each call in message.toolCalls():
-          context += ChatMessage(TOOL, "Tool round limit (<n>) reached. "
-              + "Give a brief status update and tell the user to send 'continue' "
-              + "if more work is needed.", toolCallId = call.id())
-      response = provider.send(context, registry.tools(), io::write, io::writeReasoning)
-      final = response.message()          // reply text used; any tool calls dropped
-      break
+      if not userWantsToContinue():           // prompt "[y/N]" via IO
+          for each call in message.toolCalls():
+              context += ChatMessage(TOOL, "Tool round limit (<n>) reached; "
+                  + "answer without more tool calls.", toolCallId = call.id())
+          response = provider.send(context, registry.tools(), io::write, io::writeReasoning)
+          final = response.message()          // reply text used; any tool calls dropped
+          break
+      rounds = -1                              // reset so the next iteration starts fresh
   history += message                         // assistant with tool_calls
   contextBuilder.appendAssistantToolCalls(message.toolCalls())
   transcript += one tool_call record per call
@@ -197,11 +198,17 @@ loop:
   // loop back; the model may call again or answer
 ```
 
-The round-limit branch appends a `TOOL` result for each pending call (using its
-real `tool_call_id`, which strict providers require to reference a prior
-assistant tool_call), sends one final message asking the model to answer without
-further tool calls, and uses that reply as final (dropping any tool calls in
-it). This guarantees the loop always terminates.
+The round-limit branch is not a hard stop: the loop prompts the user
+(`Tool round limit (<n>) reached. Continue with <n> more tool rounds? [y/N] `)
+via the same `IO` used for approval prompts. On **yes**, the round counter is
+reset (`round = -1`) and the loop continues in the same turn with a fresh
+`maxToolRounds`; on **no** (or EOF), it appends a `TOOL` result for each
+pending call (using its real `tool_call_id`, which strict providers require to
+reference a prior assistant tool_call), sends one final message asking the
+model to answer without further tool calls, and uses that reply as final
+(dropping any tool calls in it). The user decides each time whether to extend,
+so the loop is not a hard stop unless the user chooses it to be. There is no
+cap on extensions; the context-limit warnings still guard context growth.
 
 ### Session tool budget
 
@@ -306,10 +313,11 @@ void appendToolResult(UUID sessionId, String id, String content, boolean error) 
 - Provider errors during any send keep the existing behavior (partial content
   paths, `ProviderException` handling) unchanged.
 - Round-limit: after `maxToolRounds` tool rounds (default 32), the session
-  appends a `TOOL` message instructing the model to give a status and tell the
-  user to send `continue`, sends once more, and uses that reply as final —
-  dropping any tool calls it still contains. The loop is guaranteed to
-  terminate.
+  prompts the user (`[y/N]`) to continue with `maxToolRounds` more rounds. On
+  yes the counter resets and the loop continues in the same turn; on no it
+  appends a `TOOL` message instructing the model to answer without more tool
+  calls, sends once more, and uses that reply as final — dropping any tool
+  calls it still contains. The user controls whether it is a hard stop.
 - Session budget exhaustion: when `maxToolCallsPerSession` is configured and the
   budget runs out mid-turn, pending calls get a `TOOL` result explaining the
   budget is exhausted, one final send produces a status reply, and the turn ends

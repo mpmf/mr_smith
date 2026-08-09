@@ -44,11 +44,14 @@ public final class ToolLoop {
             }
             sink.assistantWithToolCalls(message, calls);
             if (round >= maxToolRounds) {
-                String limitContent = roundLimitMessage(maxToolRounds);
-                for (ToolCall call : calls) {
-                    sink.toolResult(call.id(), limitContent, false);
+                if (!userWantsToContinue(io, maxToolRounds)) {
+                    String limitContent = roundLimitMessage(maxToolRounds);
+                    for (ToolCall call : calls) {
+                        sink.toolResult(call.id(), limitContent, false);
+                    }
+                    return finalAnswer(acc, context, provider, tools, io);
                 }
-                return finalAnswer(acc, context, provider, tools, io);
+                round = -1;
             }
             boolean budgetStopped = false;
             for (int i = 0; i < calls.size(); i++) {
@@ -81,8 +84,20 @@ public final class ToolLoop {
     }
 
     private static String roundLimitMessage(int maxToolRounds) {
-        return "Tool round limit (" + maxToolRounds + ") reached. "
-                + "Give a brief status update and tell the user to send 'continue' if more work is needed.";
+        return "Tool round limit (" + maxToolRounds + ") reached; answer without more tool calls.";
+    }
+
+    private static boolean userWantsToContinue(IO io, int maxToolRounds) {
+        io.writePrompt("Tool round limit (" + maxToolRounds + ") reached. Continue with "
+                + maxToolRounds + " more tool rounds? [y/N] ");
+        String answer;
+        try {
+            answer = io.readLine();
+        } catch (IOException e) {
+            return false;
+        }
+        return answer != null && (answer.trim().equalsIgnoreCase("y")
+                || answer.trim().equalsIgnoreCase("yes"));
     }
 
     private static String budgetLimitMessage(ToolBudget budget) {

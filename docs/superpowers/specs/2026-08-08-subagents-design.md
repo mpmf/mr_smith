@@ -37,15 +37,16 @@ research must happen inline in the main context, bloating it.
 
 ## Configurable tool round limit
 
-The 8-round tool loop cap is promoted to an agent configuration setting:
+The tool loop cap (default 32) is promoted to an agent configuration setting:
 
 - `AgentConfig` gains `Integer maxToolRounds` (optional). `ConfigLoader`
   parses a per-agent `maxToolRounds` integer; `AgentCatalog` validates it is
   positive when present. `AppConfig` carries it.
-- Omitted → default 8 (today's behavior unchanged).
-- `ChatSession.runToolLoop` uses `config.maxToolRounds()` for the cap and the
-  round-limit message (`Tool round limit (<n>) reached; answer without more
-  tool calls.`). The `MAX_TOOL_ROUNDS` constant becomes the default.
+- Omitted → default 32 (today's behavior unchanged).
+- When the cap is reached, the loop (shared by the main session and sub-agents)
+  prompts the user to continue with `maxToolRounds` more rounds; on decline it
+  injects `Tool round limit (<n>) reached; answer without more tool calls.`
+  The `DEFAULT_MAX_TOOL_ROUNDS` constant is the fallback.
 - The sub-agent's nested loop uses the chosen agent's `maxToolRounds`
   (resolved from the agent the `task` call selects), so each agent can have
   its own limit.
@@ -211,7 +212,7 @@ back into `ChatMessage`s:
 | `task` unknown `agent` | error result (`Unknown agent: <name>`) |
 | `task` unknown/missing `task_id` file | error result (`Unknown task_id: <id>`) |
 | Sub-agent provider error | error result with the message; main turn continues |
-| Sub-agent round limit | same forced-answer handling as the main loop, capped at the agent's `maxToolRounds` |
+| Sub-agent round limit | prompts the user to continue, like the main loop, capped at the agent's `maxToolRounds` |
 | Sub-agent destructive call declined | declined tool result; loop continues |
 
 ## Testing
@@ -223,7 +224,7 @@ back into `ChatMessage`s:
   system+prompt and returns the final message; writes `subagent-1.jsonl` with
   user/assistant/tool records; resume replays prior records then appends the
   new prompt and continues; sub-agent `edit` prompts for approval; usage
-  accumulates; 8-round cap.
+  accumulates; honors the agent's `maxToolRounds`.
 - `SubAgentTranscriptStoreTest` — write/read round-trip (user, assistant,
   tool_call, tool_result); sequential numbering restarting per session.
 - `ToolRegistryTest` — `task` always added (empty catalog → 4 tools: edit,

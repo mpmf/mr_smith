@@ -20,7 +20,9 @@ answer (or call tools), and drive the session with simple `/` commands.
 - **Tool calling loop** — the model can invoke tools (capped at 32 rounds per
   turn by default, configurable per agent; optionally also bounded by a
   per-session tool budget), with confirmation prompts for any action that
-  modifies your filesystem.
+  modifies your filesystem. When the round cap is reached the loop asks whether
+  to continue with a fresh set of rounds, so it is not a hard stop unless you
+  decline.
 - **Multiple providers & agents** — named providers (credentials/endpoint) and
   named agents (model + system prompt + context limit + tool allowlist),
   switchable mid-session.
