@@ -196,6 +196,11 @@ class WebFetchToolTest {
         }
 
         @Override
+        public javax.net.ssl.SSLParameters sslParameters() {
+            return null;
+        }
+
+        @Override
         public Version version() {
             return null;
         }
@@ -211,18 +216,18 @@ class WebFetchToolTest {
         }
 
         @Override
-        public <T> HttpResponse<T> send(HttpRequest request, BodyHandler<T> responseBodyHandler) {
+        public <T> HttpResponse<T> send(HttpRequest request, HttpResponse.BodyHandler<T> responseBodyHandler) {
             return (HttpResponse<T>) response;
         }
 
         @Override
-        public <T> CompletableFuture<HttpResponse<T>> sendAsync(HttpRequest request, BodyHandler<T> responseBodyHandler) {
+        public <T> CompletableFuture<HttpResponse<T>> sendAsync(HttpRequest request, HttpResponse.BodyHandler<T> responseBodyHandler) {
             return CompletableFuture.completedFuture((HttpResponse<T>) response);
         }
 
         @Override
-        public <T> CompletableFuture<HttpResponse<T>> sendAsync(HttpRequest request, BodyHandler<T> responseBodyHandler,
-                                                                PushPromiseHandler<T> pushPromiseHandler) {
+        public <T> CompletableFuture<HttpResponse<T>> sendAsync(HttpRequest request, HttpResponse.BodyHandler<T> responseBodyHandler,
+                                                                HttpResponse.PushPromiseHandler<T> pushPromiseHandler) {
             return CompletableFuture.completedFuture((HttpResponse<T>) response);
         }
     }
