@@ -49,6 +49,7 @@ public class ChatSession {
     private AppConfig config;
     private Provider provider;
     private ToolRegistry toolRegistry;
+    private SubAgentRunner subAgentRunner;
 
     public ChatSession(IO io, TranscriptWriter transcripts, ContextBuilder contextBuilder,
                        AgentCatalog agents, ProviderFactory providerFactory,
@@ -139,7 +140,10 @@ public class ChatSession {
     private void applyAgent() {
         config = agents.resolve(currentAgentName);
         provider = providerFactory.create(config);
-        toolRegistry = toolRegistryFactory.create(config, skills, io);
+        subAgentRunner = new SubAgentRunner(agents, providerFactory,
+                cfg -> ToolRegistry.with(cfg.tools(), skills, io, null),
+                io, tracker, () -> config, () -> currentSessionId);
+        toolRegistry = toolRegistryFactory.create(config, skills, io, subAgentRunner);
     }
 
     private void startFreshSession() {
@@ -149,6 +153,7 @@ public class ChatSession {
         warned100 = false;
         contextBuilder.start(composeSystemPrompt(config.systemPrompt()));
         toolRegistry.resetSession();
+        subAgentRunner.reset();
         startNewSession();
     }
 

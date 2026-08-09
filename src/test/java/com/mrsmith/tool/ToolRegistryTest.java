@@ -124,15 +124,15 @@ class ToolRegistryTest {
     void builtInWithNamesCreatesAllRequestedTools() {
         ToolRegistry registry = ToolRegistry.with(
                 List.of("shell", "read_file", "write_file", "list_dir", "glob", "web_fetch"),
-                emptyCatalog(), io);
-        assertEquals(9, registry.tools().size());
+                emptyCatalog(), io, taskRunner);
+        assertEquals(10, registry.tools().size());
         assertTrue(registry.find("shell").isPresent());
         assertTrue(registry.find("web_fetch").isPresent());
     }
 
     @Test
     void builtInWithUnknownNameThrows() {
-        assertThrows(ToolException.class, () -> ToolRegistry.with(List.of("nope"), emptyCatalog(), io));
+        assertThrows(ToolException.class, () -> ToolRegistry.with(List.of("nope"), emptyCatalog(), io, taskRunner));
     }
 
     @Test
@@ -143,18 +143,19 @@ class ToolRegistryTest {
 
     @Test
     void alwaysOnToolsAddedEvenWhenCatalogEmpty() {
-        ToolRegistry registry = ToolRegistry.with(List.of(), emptyCatalog(), io);
-        assertEquals(3, registry.tools().size());
+        ToolRegistry registry = ToolRegistry.with(List.of(), emptyCatalog(), io, taskRunner);
+        assertEquals(4, registry.tools().size());
         assertTrue(registry.find("edit").isPresent());
         assertTrue(registry.find("todowrite").isPresent());
         assertTrue(registry.find("question").isPresent());
+        assertTrue(registry.find("task").isPresent());
         assertFalse(registry.find("skill").isPresent());
     }
 
     @Test
     void addsSkillToolWhenCatalogNonEmpty() throws IOException {
-        ToolRegistry registry = ToolRegistry.with(List.of(), catalogWith("coding"), io);
-        assertEquals(4, registry.tools().size());
+        ToolRegistry registry = ToolRegistry.with(List.of(), catalogWith("coding"), io, taskRunner);
+        assertEquals(5, registry.tools().size());
         assertTrue(registry.find("skill").isPresent());
     }
 
@@ -167,7 +168,7 @@ class ToolRegistryTest {
 
     @Test
     void alwaysOnToolsHaveExpectedApproval() {
-        ToolRegistry registry = ToolRegistry.with(List.of(), emptyCatalog(), io);
+        ToolRegistry registry = ToolRegistry.with(List.of(), emptyCatalog(), io, taskRunner);
         assertFalse(registry.find("edit").orElseThrow().isReadOnly());
         assertTrue(registry.find("todowrite").orElseThrow().isReadOnly());
         assertTrue(registry.find("question").orElseThrow().isReadOnly());
@@ -176,7 +177,7 @@ class ToolRegistryTest {
     @Test
     void resetSessionClearsSkillToolState() throws IOException {
         SkillCatalog catalog = catalogWith("coding");
-        ToolRegistry registry = ToolRegistry.with(List.of(), catalog, io);
+        ToolRegistry registry = ToolRegistry.with(List.of(), catalog, io, taskRunner);
         Tool skillTool = registry.find("skill").orElseThrow();
         skillTool.execute(JSON.readTree("{\"name\":\"coding\"}"));
         registry.resetSession();
@@ -186,11 +187,28 @@ class ToolRegistryTest {
 
     @Test
     void resetSessionClearsTodowriteState() throws Exception {
-        ToolRegistry registry = ToolRegistry.with(List.of(), emptyCatalog(), io);
+        ToolRegistry registry = ToolRegistry.with(List.of(), emptyCatalog(), io, taskRunner);
         TodowriteTool todo = (TodowriteTool) registry.find("todowrite").orElseThrow();
         todo.execute(JSON.readTree(
                 "{\"todos\":[{\"content\":\"a\",\"status\":\"pending\",\"priority\":\"high\"}]}"));
         registry.resetSession();
         assertTrue(todo.tasks().isEmpty());
+    }
+
+    private final TaskRunner taskRunner = (p, a, t) -> new TaskResult("subagent-1", "stub", false);
+
+    @Test
+    void taskToolAddedWhenRunnerProvided() {
+        ToolRegistry withRunner = ToolRegistry.with(List.of(), emptyCatalog(), io, taskRunner);
+        assertTrue(withRunner.find("task").isPresent());
+        ToolRegistry withoutRunner = ToolRegistry.with(List.of(), emptyCatalog(), io, null);
+        assertFalse(withoutRunner.find("task").isPresent());
+        assertEquals(3, withoutRunner.tools().size());
+        assertEquals(4, withRunner.tools().size());
+    }
+
+    @Test
+    void taskToolNotInBuiltinNames() {
+        assertFalse(ToolRegistry.builtinNames().contains("task"));
     }
 }
