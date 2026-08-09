@@ -36,7 +36,7 @@ public final class ToolRegistry {
         this.byName = Map.copyOf(index);
     }
 
-    public static ToolRegistry with(List<String> toolNames, SkillCatalog catalog, IO io) {
+    public static ToolRegistry with(List<String> toolNames, SkillCatalog catalog, IO io, TaskRunner taskRunner) {
         List<Tool> tools = new ArrayList<>();
         for (String name : toolNames) {
             Supplier<Tool> factory = BUILT_INS.get(name);
@@ -48,6 +48,9 @@ public final class ToolRegistry {
         tools.add(new EditTool());
         tools.add(new TodowriteTool());
         tools.add(new QuestionTool(io));
+        if (taskRunner != null) {
+            tools.add(new TaskTool(taskRunner));
+        }
         if (catalog != null && !catalog.isEmpty()) {
             tools.add(new SkillTool(catalog));
         }

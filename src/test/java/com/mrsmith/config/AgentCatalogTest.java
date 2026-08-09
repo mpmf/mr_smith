@@ -125,4 +125,18 @@ class AgentCatalogTest {
         assertEquals(Path.of("/proj/skills"), catalog.projectSkillsDir());
         assertEquals(Path.of("/home/skills"), catalog.globalSkillsDir());
     }
+
+    @Test
+    void nonPositiveMaxToolRoundsThrows() {
+        AgentConfig bad = new AgentConfig("coder", "opencode", "model-x", null, null, 0);
+        assertThrows(ConfigException.class,
+                () -> new AgentCatalog(List.of(provider), List.of(bad), "coder", true, Path.of("/tmp/s")));
+    }
+
+    @Test
+    void resolveCarriesMaxToolRounds() {
+        AgentConfig withRounds = new AgentConfig("coder", "opencode", "model-x", null, null, 5);
+        AgentCatalog catalog = new AgentCatalog(List.of(provider), List.of(withRounds), "coder", true, Path.of("/tmp/s"));
+        assertEquals(5, catalog.resolve("coder").maxToolRounds());
+    }
 }

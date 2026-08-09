@@ -18,6 +18,17 @@ public class UsageTracker {
         }
         lastTurn = usage;
         lastTurnEstimated = estimated;
+        accumulate(usage, estimated);
+    }
+
+    public void recordSessionUsage(Usage usage, boolean estimated) {
+        if (usage == null) {
+            return;
+        }
+        accumulate(usage, estimated);
+    }
+
+    private void accumulate(Usage usage, boolean estimated) {
         if (estimated) {
             sessionEstimated = true;
         }

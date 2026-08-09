@@ -6,5 +6,5 @@ import com.mrsmith.skill.SkillCatalog;
 
 public interface ToolRegistryFactory {
 
-    ToolRegistry create(AppConfig config, SkillCatalog catalog, IO io);
+    ToolRegistry create(AppConfig config, SkillCatalog catalog, IO io, TaskRunner taskRunner);
 }
