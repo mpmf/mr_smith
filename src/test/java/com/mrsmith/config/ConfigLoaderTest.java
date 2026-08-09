@@ -197,6 +197,32 @@ class ConfigLoaderTest {
                 catalog.globalSkillsDir());
     }
 
+    @Test
+    void parsesMaxToolRoundsPerAgent() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "p", "apiKey": "sk-x", "baseUrl": "https://example.com/v1" } ],
+                  "agents": [ { "name": "a", "provider": "p", "model": "m", "maxToolRounds": 12 } ],
+                  "defaultAgent": "a"
+                }
+                """);
+        AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
+        assertEquals(12, catalog.resolve("a").maxToolRounds());
+    }
+
+    @Test
+    void maxToolRoundsDefaultsToNull() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "p", "apiKey": "sk-x", "baseUrl": "https://example.com/v1" } ],
+                  "agents": [ { "name": "a", "provider": "p", "model": "m" } ],
+                  "defaultAgent": "a"
+                }
+                """);
+        AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
+        assertEquals(null, catalog.resolve("a").maxToolRounds());
+    }
+
     private Path noFile() {
         return tempDir.resolve("missing.json");
     }

@@ -6,7 +6,7 @@ import java.util.Objects;
 
 public record AppConfig(String apiKey, String baseUrl, String model, String systemPrompt,
                         Integer maxContextTokens, boolean includeUsage, Path sessionsDir,
-                        List<String> tools) {
+                        List<String> tools, Integer maxToolRounds) {
 
     public AppConfig {
         Objects.requireNonNull(apiKey, "apiKey is required");
@@ -19,16 +19,16 @@ public record AppConfig(String apiKey, String baseUrl, String model, String syst
     }
 
     public AppConfig(String apiKey, String baseUrl, String model, String systemPrompt) {
-        this(apiKey, baseUrl, model, systemPrompt, null, true, null, List.of());
+        this(apiKey, baseUrl, model, systemPrompt, null, true, null, List.of(), null);
     }
 
     public AppConfig(String apiKey, String baseUrl, String model, String systemPrompt,
                      Integer maxContextTokens, boolean includeUsage) {
-        this(apiKey, baseUrl, model, systemPrompt, maxContextTokens, includeUsage, null, List.of());
+        this(apiKey, baseUrl, model, systemPrompt, maxContextTokens, includeUsage, null, List.of(), null);
     }
 
     public AppConfig(String apiKey, String baseUrl, String model, String systemPrompt,
                      Integer maxContextTokens, boolean includeUsage, Path sessionsDir) {
-        this(apiKey, baseUrl, model, systemPrompt, maxContextTokens, includeUsage, sessionsDir, List.of());
+        this(apiKey, baseUrl, model, systemPrompt, maxContextTokens, includeUsage, sessionsDir, List.of(), null);
     }
 }

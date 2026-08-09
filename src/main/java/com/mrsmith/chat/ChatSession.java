@@ -34,7 +34,7 @@ public class ChatSession {
 
     private static final int WARN_THRESHOLD_PERCENT = 85;
     private static final int LIMIT_PERCENT = 100;
-    private static final int MAX_TOOL_ROUNDS = 8;
+    private static final int DEFAULT_MAX_TOOL_ROUNDS = 8;
 
     private final IO io;
     private final TranscriptWriter transcripts;
@@ -127,8 +127,8 @@ public class ChatSession {
                 return new TurnResult(message, new Usage(acc.prompt, acc.completion), acc.estimated);
             }
             recordToolCallMessage(message, calls);
-            if (round >= MAX_TOOL_ROUNDS) {
-                String limitContent = "Tool round limit (" + MAX_TOOL_ROUNDS + ") reached; answer without more tool calls.";
+            if (round >= maxToolRounds()) {
+                String limitContent = "Tool round limit (" + maxToolRounds() + ") reached; answer without more tool calls.";
                 for (ToolCall call : calls) {
                     appendToolResultMessage(call.id(), limitContent, false);
                 }
@@ -143,6 +143,11 @@ public class ChatSession {
                 appendToolResultMessage(call.id(), result.content(), result.error());
             }
         }
+    }
+
+    private int maxToolRounds() {
+        Integer value = config.maxToolRounds();
+        return value == null ? DEFAULT_MAX_TOOL_ROUNDS : value;
     }
 
     private void recordSend(ProviderResponse response, Accumulator acc) {

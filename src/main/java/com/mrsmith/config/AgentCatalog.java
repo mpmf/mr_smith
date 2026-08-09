@@ -58,6 +58,9 @@ public class AgentCatalog {
             if (agent.model() == null || agent.model().isBlank()) {
                 throw new ConfigException("Agent '" + agent.name() + "' is missing model.");
             }
+            if (agent.maxToolRounds() != null && agent.maxToolRounds() <= 0) {
+                throw new ConfigException("Agent '" + agent.name() + "' must have a positive maxToolRounds.");
+            }
             for (String tool : agent.tools()) {
                 if (!ToolRegistry.builtinNames().contains(tool)) {
                     throw new ConfigException("Agent '" + agent.name() + "' references unknown tool '" + tool + "'");
@@ -84,7 +87,8 @@ public class AgentCatalog {
         }
         ProviderConfig provider = providers.get(agent.provider());
         return new AppConfig(provider.apiKey(), provider.baseUrl(), agent.model(),
-                agent.systemPrompt(), agent.maxContextTokens(), includeUsage, sessionsDir, agent.tools());
+                agent.systemPrompt(), agent.maxContextTokens(), includeUsage, sessionsDir, agent.tools(),
+                agent.maxToolRounds());
     }
 
     public String defaultName() {
