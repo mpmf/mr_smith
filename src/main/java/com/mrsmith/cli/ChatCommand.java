@@ -54,7 +54,7 @@ public class ChatCommand implements Callable<Integer> {
         SkillCatalog skills = SkillCatalog.discover(catalog.projectSkillsDir(), catalog.globalSkillsDir());
         ChatSession session = new ChatSession(io, transcripts, contextBuilder, catalog,
                 OpenAiCompatibleProvider::new,
-                (config, skillCatalog) -> ToolRegistry.with(config.tools(), skillCatalog),
+                (config, skillCatalog, terminalIo) -> ToolRegistry.with(config.tools(), skillCatalog, terminalIo),
                 skills, initialAgent);
         try {
             session.run();

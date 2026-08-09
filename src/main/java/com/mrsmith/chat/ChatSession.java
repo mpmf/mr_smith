@@ -216,7 +216,7 @@ public class ChatSession {
     private void applyAgent() {
         config = agents.resolve(currentAgentName);
         provider = providerFactory.create(config);
-        toolRegistry = toolRegistryFactory.create(config, skills);
+        toolRegistry = toolRegistryFactory.create(config, skills, io);
     }
 
     private void startFreshSession() {
