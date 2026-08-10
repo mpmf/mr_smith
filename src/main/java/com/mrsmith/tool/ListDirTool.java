@@ -8,6 +8,7 @@ import com.mrsmith.util.Json;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -47,6 +48,31 @@ public final class ListDirTool implements Tool {
     @Override
     public boolean isReadOnly() {
         return true;
+    }
+
+    @Override
+    public Tool.ApprovalCheck approvalCheck(JsonNode args) {
+        String pathArg = args.path("path").asText(null);
+        if (pathArg == null || pathArg.isBlank()) {
+            return null;
+        }
+        try {
+            Path dir = ToolPaths.requireCanonicalWithin(root, ToolPaths.requireWithin(root, pathArg));
+            if (!Files.isDirectory(dir)) {
+                return null;
+            }
+            if (SensitivePaths.isSensitive(dir)) {
+                return new Tool.ApprovalCheck(List.of(name()), "sensitive file");
+            }
+            try (Stream<Path> stream = Files.list(dir)) {
+                boolean sensitive = stream.anyMatch(p -> SensitivePaths.isSensitive(p.getFileName()));
+                return sensitive ? new Tool.ApprovalCheck(List.of(name()), "sensitive file") : null;
+            } catch (IOException e) {
+                return null;
+            }
+        } catch (ToolException e) {
+            return null;
+        }
     }
 
     @Override
