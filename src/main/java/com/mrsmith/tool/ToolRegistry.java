@@ -11,7 +11,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 
-public final class ToolRegistry {
+public final class ToolRegistry implements ToolState {
 
     private static final Map<String, Function<IO, Tool>> BUILT_INS = new LinkedHashMap<>();
 
@@ -79,5 +79,27 @@ public final class ToolRegistry {
                 resettable.reset();
             }
         }
+    }
+
+    @Override
+    public Set<String> loadedSkills() {
+        return skillTool().map(SkillTool::loaded).orElse(Set.of());
+    }
+
+    @Override
+    public SkillTool.SkillLoad loadSkill(String name) {
+        return skillTool().map(tool -> tool.loadSkill(name))
+                .orElseGet(() -> SkillTool.SkillLoad.unknown(name));
+    }
+
+    @Override
+    public List<TodowriteTool.Task> tasks() {
+        Tool tool = byName.get("todowrite");
+        return tool instanceof TodowriteTool todo ? todo.tasks() : List.of();
+    }
+
+    private Optional<SkillTool> skillTool() {
+        Tool tool = byName.get("skill");
+        return tool instanceof SkillTool skillTool ? Optional.of(skillTool) : Optional.empty();
     }
 }

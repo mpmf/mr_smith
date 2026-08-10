@@ -219,4 +219,25 @@ class ToolRegistryTest {
     void taskToolNotInBuiltinNames() {
         assertFalse(ToolRegistry.builtinNames().contains("task"));
     }
+
+    @Test
+    void toolStateEmptyWithoutSkills() {
+        ToolRegistry registry = ToolRegistry.with(List.of(), emptyCatalog(), io, taskRunner);
+        assertTrue(registry.loadedSkills().isEmpty());
+        SkillTool.SkillLoad load = registry.loadSkill("nope");
+        assertTrue(load.error());
+        assertEquals("Unknown skill: nope", load.message());
+        assertTrue(registry.tasks().isEmpty());
+    }
+
+    @Test
+    void toolStateTracksLoadedSkills() throws IOException {
+        ToolRegistry registry = ToolRegistry.with(List.of(), catalogWith("coding"), io, taskRunner);
+        SkillTool.SkillLoad load = registry.loadSkill("coding");
+        assertTrue(load.loaded());
+        assertTrue(registry.loadedSkills().contains("coding"));
+        SkillTool.SkillLoad again = registry.loadSkill("coding");
+        assertFalse(again.loaded());
+        assertEquals("Skill 'coding' is already loaded.", again.message());
+    }
 }

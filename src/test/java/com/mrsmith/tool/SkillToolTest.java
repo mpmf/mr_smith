@@ -78,4 +78,19 @@ class SkillToolTest {
         assertTrue(tool.isLoaded("coding"));
         assertFalse(tool.load("coding"));
     }
+
+    @Test
+    void loadSkillReportsStates() throws IOException {
+        SkillTool tool = new SkillTool(catalog("coding", "Write Java.", "run tests"));
+        SkillTool.SkillLoad loaded = tool.loadSkill("coding");
+        assertTrue(loaded.loaded());
+        assertFalse(loaded.error());
+        assertTrue(loaded.content().contains("run tests"));
+        SkillTool.SkillLoad again = tool.loadSkill("coding");
+        assertFalse(again.loaded());
+        assertEquals("Skill 'coding' is already loaded.", again.message());
+        SkillTool.SkillLoad unknown = tool.loadSkill("nope");
+        assertTrue(unknown.error());
+        assertEquals("Unknown skill: nope", unknown.message());
+    }
 }

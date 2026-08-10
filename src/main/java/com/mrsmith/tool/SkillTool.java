@@ -20,12 +20,41 @@ public final class SkillTool implements Tool, Resettable {
         this.catalog = catalog;
     }
 
+    public record SkillLoad(boolean loaded, boolean error, String content, String message) {
+
+        static SkillLoad unknown(String name) {
+            return new SkillLoad(false, true, null, "Unknown skill: " + name);
+        }
+
+        static SkillLoad alreadyLoaded(String name) {
+            return new SkillLoad(false, false, null, "Skill '" + name + "' is already loaded.");
+        }
+
+        static SkillLoad ok(String content) {
+            return new SkillLoad(true, false, content, null);
+        }
+    }
+
+    public Set<String> loaded() {
+        return Set.copyOf(loaded);
+    }
+
     public boolean isLoaded(String name) {
         return loaded.contains(name);
     }
 
     public boolean load(String name) {
         return loaded.add(name);
+    }
+
+    public SkillLoad loadSkill(String name) {
+        if (catalog.find(name).isEmpty()) {
+            return SkillLoad.unknown(name);
+        }
+        if (!load(name)) {
+            return SkillLoad.alreadyLoaded(name);
+        }
+        return SkillLoad.ok(catalog.render(name));
     }
 
     @Override
@@ -64,12 +93,10 @@ public final class SkillTool implements Tool, Resettable {
         if (name == null || name.isBlank()) {
             throw new ToolException("missing required 'name' argument");
         }
-        if (catalog.find(name).isEmpty()) {
-            return new ToolResult("Unknown skill: " + name, true);
+        SkillLoad result = loadSkill(name);
+        if (result.error()) {
+            return new ToolResult(result.message(), true);
         }
-        if (!load(name)) {
-            return new ToolResult("Skill '" + name + "' is already loaded.", false);
-        }
-        return new ToolResult(catalog.render(name), false);
+        return new ToolResult(result.loaded() ? result.content() : result.message(), false);
     }
 }
