@@ -37,7 +37,7 @@ class OpenAiCompatibleProviderTest {
         server.start();
         AgentRuntime runtime = new AgentRuntime(
                 new AgentConfig("a", "p", "test-model", null, null),
-                new ProviderConfig("p", "sk-test", server.url("/").toString().replaceAll("/+$", "")),
+                new ProviderConfig("p", "sk-test", server.url("/").toString()),
                 new AgentRuntime.Globals(true));
         provider = new OpenAiCompatibleProvider(runtime, HttpClient.newHttpClient(), 0L);
     }
@@ -219,7 +219,7 @@ class OpenAiCompatibleProviderTest {
         server.start();
         AgentRuntime runtime = new AgentRuntime(
                 new AgentConfig("a", "p", "test-model", null, null),
-                new ProviderConfig("p", "sk-test", server.url("/").toString().replaceAll("/+$", "")),
+                new ProviderConfig("p", "sk-test", server.url("/").toString()),
                 new AgentRuntime.Globals(false));
         provider = new OpenAiCompatibleProvider(runtime, HttpClient.newHttpClient(), 0L);
         server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));

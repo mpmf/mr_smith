@@ -82,7 +82,7 @@ public final class ConfigLoader {
                 if (envKey != null && !envKey.isBlank()) {
                     apiKey = envKey;
                 }
-                result.add(new ProviderConfig(name, apiKey, stripTrailingSlash(node.path("baseUrl").asText())));
+                result.add(new ProviderConfig(name, apiKey, node.path("baseUrl").asText()));
             }
         }
         return result;
@@ -90,12 +90,6 @@ public final class ConfigLoader {
 
     private static String normalizeEnvName(String name) {
         return name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "_");
-    }
-
-    private static String stripTrailingSlash(String baseUrl) {
-        return baseUrl != null && baseUrl.endsWith("/")
-                ? baseUrl.substring(0, baseUrl.length() - 1)
-                : baseUrl;
     }
 
     private static List<AgentConfig> parseAgents(JsonNode root) {
