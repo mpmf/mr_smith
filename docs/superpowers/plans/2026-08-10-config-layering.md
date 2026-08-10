@@ -309,23 +309,24 @@ to:
    ```
 
 3. `src/test/java/com/mrsmith/provider/OpenAiCompatibleProviderTest.java`:
-   - Replace the two `AppConfig` constructions with `AgentRuntime`. At line ~36:
+   - Replace the two `AppConfig` constructions. At the first site (currently `AppConfig config = new AppConfig("sk-test", server.url("/").toString(), "test-model", null); provider = new OpenAiCompatibleProvider(config, HttpClient.newHttpClient(), 0L);`):
    ```java
         AgentRuntime runtime = new AgentRuntime(
                 new AgentConfig("a", "p", "test-model", null, null),
-                new ProviderConfig("p", "sk-test", server.url("/").toString()),
+                new ProviderConfig("p", "sk-test", server.url("/").toString().replaceAll("/+$", "")),
                 new AgentRuntime.Globals(true));
         provider = new OpenAiCompatibleProvider(runtime, HttpClient.newHttpClient(), 0L);
    ```
-   At line ~215:
+   At the second site (currently `AppConfig config = new AppConfig("sk-test", server.url("/").toString(), "test-model", null, null, false); provider = new OpenAiCompatibleProvider(config, HttpClient.newHttpClient(), 0L);`):
    ```java
         AgentRuntime runtime = new AgentRuntime(
                 new AgentConfig("a", "p", "test-model", null, null),
-                new ProviderConfig("p", "sk-test", server.url("/").toString()),
+                new ProviderConfig("p", "sk-test", server.url("/").toString().replaceAll("/+$", "")),
                 new AgentRuntime.Globals(false));
         provider = new OpenAiCompatibleProvider(runtime, HttpClient.newHttpClient(), 0L);
    ```
    - Replace `import com.mrsmith.config.AppConfig;` with imports for `AgentConfig`, `AgentRuntime`, and `ProviderConfig`.
+   - Note: `server.url("/").toString()` ends in `/`; the `.replaceAll("/+$", "")` normalizes it because trailing-slash stripping now lives in `ConfigLoader.parseProviders` (it no longer happens in the config record's constructor).
 
 4. `src/test/java/com/mrsmith/chat/ChatSessionTest.java`:
    - Change `import com.mrsmith.config.AppConfig;` to `import com.mrsmith.config.AgentRuntime;`.
