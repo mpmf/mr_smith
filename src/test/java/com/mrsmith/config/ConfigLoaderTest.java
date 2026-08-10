@@ -304,6 +304,20 @@ class ConfigLoaderTest {
         assertEquals("sk-env", catalog.resolve("a").provider().apiKey());
     }
 
+    @Test
+    void blankProviderApiKeyEnvFallsBackToFile() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "p", "apiKey": "sk-file", "baseUrl": "https://example.com/v1" } ],
+                  "agents": [ { "name": "a", "provider": "p", "model": "m" } ],
+                  "defaultAgent": "a"
+                }
+                """);
+        AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(),
+                Map.of("MRSMITH_P_API_KEY", "  "));
+        assertEquals("sk-file", catalog.resolve("a").provider().apiKey());
+    }
+
     private Path noFile() {
         return tempDir.resolve("missing.json");
     }

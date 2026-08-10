@@ -124,7 +124,8 @@ CLI flags (`--agent`, `--sessions-dir`) > environment variable
 (`MRSMITH_SESSIONS_DIR`) > config file > defaults. Provider API keys are
 read from `MRSMITH_<PROVIDER>_API_KEY` (provider name uppercased, dashes →
 underscores), which overrides the `providers[].apiKey` file value — so keys
-can be kept out of the config file.
+can be kept out of the config file. Provider names that differ only in
+separators (e.g. `my-provider` vs `my_provider`) map to the same env var.
 
 ---
 
