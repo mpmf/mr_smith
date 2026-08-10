@@ -18,14 +18,24 @@ public final class ShellTool implements Tool {
 
     private final Path workDir;
     private final long timeoutMillis;
+    private final ShellCommandClassifier classifier;
 
     public ShellTool() {
-        this(Path.of("").toAbsolutePath(), 30_000L);
+        this(Path.of("").toAbsolutePath(), 30_000L, new ShellCommandClassifier());
     }
 
     public ShellTool(Path workDir, long timeoutMillis) {
+        this(workDir, timeoutMillis, new ShellCommandClassifier());
+    }
+
+    public ShellTool(Path workDir, long timeoutMillis, ShellCommandClassifier classifier) {
         this.workDir = workDir;
         this.timeoutMillis = timeoutMillis;
+        this.classifier = classifier;
+    }
+
+    public ShellTool(ShellCommandClassifier classifier) {
+        this(Path.of("").toAbsolutePath(), 30_000L, classifier);
     }
 
     @Override
@@ -35,7 +45,9 @@ public final class ShellTool implements Tool {
 
     @Override
     public String description() {
-        return "Run a shell command via bash -c in the working directory and return its stdout, stderr, and exit code.";
+        return "Run a shell command via bash -c in the working directory and return its stdout, stderr, and exit code. "
+                + "Read-only commands (ls, cat, git status, ...) run automatically; commands that modify the "
+                + "filesystem or unknown commands require approval.";
     }
 
     @Override
@@ -50,6 +62,22 @@ public final class ShellTool implements Tool {
     @Override
     public boolean isReadOnly() {
         return false;
+    }
+
+    @Override
+    public Tool.ApprovalCheck approvalCheck(JsonNode args) {
+        String command = args.path("command").asText(null);
+        if (command == null || command.isBlank()) {
+            return null;
+        }
+        ShellCommandClassifier.Classification c = classifier.classify(command);
+        if (!c.requiresApproval()) {
+            return null;
+        }
+        String reason = c.verdict() == ShellCommandClassifier.Verdict.DANGEROUS
+                ? "dangerous command" : "unknown command";
+        return new Tool.ApprovalCheck(
+                c.keys().stream().map(key -> "shell:" + key).toList(), reason);
     }
 
     @Override

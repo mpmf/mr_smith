@@ -14,6 +14,7 @@ import com.mrsmith.provider.Role;
 import com.mrsmith.provider.ToolCall;
 import com.mrsmith.provider.Usage;
 import com.mrsmith.skill.SkillCatalog;
+import com.mrsmith.tool.ShellTool;
 import com.mrsmith.tool.TaskResult;
 import com.mrsmith.tool.Tool;
 import com.mrsmith.tool.ToolRegistry;
@@ -404,5 +405,25 @@ class SubAgentRunnerTest {
         assertFalse(result.error());
         assertEquals(1, edit.calls);
         assertTrue(io.lines.stream().noneMatch(l -> l.contains("Run edit(")));
+    }
+
+    @Test
+    void subAgentSkipsPromptForAlwaysAllowedCommandKey() throws Exception {
+        ToolRegistry tools = new ToolRegistry(List.of(new ShellTool(tempDir, 5000)));
+        FakeProvider provider = new FakeProvider(
+                new ToolCall("c1", "shell", JSON.readTree("{\"command\":\"touch subagent-file.txt\"}")));
+        ToolApproval approval = new ToolApproval();
+        approval.allowAlways("shell:touch");
+        StubIo io = new StubIo(List.of());
+        Files.createDirectories(tempDir.resolve(sessionId.toString()));
+        AgentCatalog catalog = catalog();
+        SubAgentRunner runner = new SubAgentRunner(new SubAgentRunner.Context(catalog,
+                new FakeProviderFactory(provider), fixedRegistry(tools), emptySkills(), io,
+                new UsageTracker(), () -> catalog.resolve("a"), () -> sessionId,
+                () -> new ToolBudget(null, io), () -> approval));
+        TaskResult result = runner.run("do it", null, null);
+        assertFalse(result.error());
+        assertTrue(Files.exists(tempDir.resolve("subagent-file.txt")));
+        assertTrue(io.lines.stream().noneMatch(l -> l.contains("Run shell(")));
     }
 }

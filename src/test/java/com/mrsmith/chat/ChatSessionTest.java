@@ -17,6 +17,7 @@ import com.mrsmith.provider.ToolCall;
 import com.mrsmith.provider.Usage;
 import com.mrsmith.session.TranscriptWriter;
 import com.mrsmith.skill.SkillCatalog;
+import com.mrsmith.tool.ShellTool;
 import com.mrsmith.tool.TaskResult;
 import com.mrsmith.tool.TaskRunner;
 import com.mrsmith.tool.Tool;
@@ -565,6 +566,56 @@ class ChatSessionTest {
         assertEquals(9, tool.calls);
         long prompts = io.lines.stream().filter(l -> l.startsWith("Run multi(")).count();
         assertEquals(1, prompts);
+    }
+
+    @Test
+    void safeShellCommandRunsWithoutPrompting() throws Exception {
+        ToolRegistryFactory registryFactory = (config, catalog, io, taskRunner) ->
+                new ToolRegistry(List.of(new ShellTool(tempDir, 5000)));
+        FakeToolProvider toolProvider = new FakeToolProvider();
+        toolProvider.alwaysCall("shell", JSON.readTree("{\"command\":\"ls\"}"));
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, emptySkills(), "a");
+        session.run();
+        long prompts = io.lines.stream().filter(l -> l.startsWith("Run shell(")).count();
+        assertEquals(0, prompts);
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("tool: shell(ls) -> ok")));
+    }
+
+    @Test
+    void dangerousShellCommandPromptsAndAlwaysAllowKeyedOnCommand() throws Exception {
+        ToolRegistryFactory registryFactory = (config, catalog, io, taskRunner) ->
+                new ToolRegistry(List.of(new ShellTool(tempDir, 5000)));
+        FakeToolProvider toolProvider = new FakeToolProvider();
+        toolProvider.alwaysCall("shell", JSON.readTree("{\"command\":\"touch marker.txt\"}"));
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "a", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, emptySkills(), "a");
+        session.run();
+        assertTrue(Files.exists(tempDir.resolve("marker.txt")));
+        List<String> prompts = io.lines.stream().filter(l -> l.startsWith("Run shell(")).toList();
+        assertEquals(1, prompts.size());
+        assertTrue(prompts.get(0).contains("(dangerous command)"));
+        assertTrue(prompts.get(0).contains("[y/N/a=always]"));
+    }
+
+    @Test
+    void dangerousShellCommandDeclinedDoesNotExecute() throws Exception {
+        ToolRegistryFactory registryFactory = (config, catalog, io, taskRunner) ->
+                new ToolRegistry(List.of(new ShellTool(tempDir, 5000)));
+        FakeToolProvider toolProvider = new FakeToolProvider();
+        toolProvider.alwaysCall("shell", JSON.readTree("{\"command\":\"touch declined.txt\"}"));
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "n", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, emptySkills(), "a");
+        session.run();
+        assertFalse(Files.exists(tempDir.resolve("declined.txt")));
+        assertTrue(toolProvider.receivedHistories.get(1).stream()
+                .anyMatch(m -> m.content() != null && m.content().contains("declined")));
     }
 
     @Test
