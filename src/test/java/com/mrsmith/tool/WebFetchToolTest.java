@@ -215,21 +215,26 @@ class WebFetchToolTest {
     }
 
     private static ToolResult fetch(WebFetchTool tool, String url) {
-        return tool.execute(JSON.readTree("{\"url\":\"" + url + "\"}"));
+        return tool.execute(JSON.createObjectNode().put("url", url));
     }
 
     @Test
     void classifiesPrivateAndPublicHosts() {
         assertTrue(WebFetchTool.isPrivateHost("localhost"));
+        assertTrue(WebFetchTool.isPrivateHost("foo.localhost"));
         assertTrue(WebFetchTool.isPrivateHost("127.0.0.1"));
         assertTrue(WebFetchTool.isPrivateHost("10.0.0.5"));
         assertTrue(WebFetchTool.isPrivateHost("192.168.1.1"));
         assertTrue(WebFetchTool.isPrivateHost("172.16.0.1"));
         assertTrue(WebFetchTool.isPrivateHost("169.254.169.254"));
         assertTrue(WebFetchTool.isPrivateHost("::1"));
+        assertTrue(WebFetchTool.isPrivateHost("::"));
+        assertTrue(WebFetchTool.isPrivateHost("fe80::1"));
+        assertTrue(WebFetchTool.isPrivateHost("fc00::1"));
         assertTrue(WebFetchTool.isPrivateHost("0.0.0.0"));
         assertFalse(WebFetchTool.isPrivateHost("example.com"));
         assertFalse(WebFetchTool.isPrivateHost("api.openai.com"));
+        assertFalse(WebFetchTool.isPrivateHost("8.8.8.8"));
     }
 
     @Test

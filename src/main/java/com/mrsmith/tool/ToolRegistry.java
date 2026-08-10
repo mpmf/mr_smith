@@ -9,18 +9,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Supplier;
+import java.util.function.Function;
 
 public final class ToolRegistry {
 
-    private static final Map<String, Supplier<Tool>> BUILT_INS = new LinkedHashMap<>();
+    private static final Map<String, Function<IO, Tool>> BUILT_INS = new LinkedHashMap<>();
 
     static {
-        BUILT_INS.put("shell", ShellTool::new);
-        BUILT_INS.put("read_file", ReadFileTool::new);
-        BUILT_INS.put("write_file", WriteFileTool::new);
-        BUILT_INS.put("list_dir", ListDirTool::new);
-        BUILT_INS.put("glob", GlobTool::new);
+        BUILT_INS.put("shell", io -> new ShellTool());
+        BUILT_INS.put("read_file", io -> new ReadFileTool());
+        BUILT_INS.put("write_file", io -> new WriteFileTool());
+        BUILT_INS.put("list_dir", io -> new ListDirTool());
+        BUILT_INS.put("glob", io -> new GlobTool());
         BUILT_INS.put("web_fetch", WebFetchTool::new);
     }
 
@@ -39,11 +39,11 @@ public final class ToolRegistry {
     public static ToolRegistry with(List<String> toolNames, SkillCatalog catalog, IO io, TaskRunner taskRunner) {
         List<Tool> tools = new ArrayList<>();
         for (String name : toolNames) {
-            Supplier<Tool> factory = BUILT_INS.get(name);
+            Function<IO, Tool> factory = BUILT_INS.get(name);
             if (factory == null) {
                 throw new ToolException("Unknown tool: " + name);
             }
-            tools.add(factory.get());
+            tools.add(factory.apply(io));
         }
         tools.add(new EditTool());
         tools.add(new TodowriteTool());
