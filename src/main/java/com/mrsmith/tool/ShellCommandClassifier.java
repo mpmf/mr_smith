@@ -50,6 +50,12 @@ public final class ShellCommandClassifier {
             "find", Set.of("-delete", "-exec", "-execdir", "-ok", "-okdir"),
             "sort", Set.of("-o", "--output"));
 
+    private static final Map<String, Map<String, Set<String>>> DANGEROUS_SUBCOMMAND_FLAGS = Map.of(
+            "git", Map.of(
+                    "branch", Set.of("-d", "-D", "--delete"),
+                    "tag", Set.of("-d", "--delete"),
+                    "remote", Set.of("remove", "rm")));
+
     private final Set<String> safeBinaries;
     private final Set<String> dangerousBinaries;
     private final Map<String, Set<String>> safeSubcommands;
@@ -104,9 +110,9 @@ public final class ShellCommandClassifier {
             String[] words = trimmed.split("\\s+");
             String binary = normalize(words[0]);
             String subcommand = words.length > 1 ? normalize(words[1]) : null;
-            String dangerousFlag = dangerousFlag(binary, words);
+            String mutation = mutationMarker(binary, subcommand, words);
             Verdict v = classifySegment(binary, subcommand);
-            if (dangerousFlag != null) {
+            if (mutation != null) {
                 v = Verdict.DANGEROUS;
             }
             if (v == Verdict.DANGEROUS) {
@@ -115,10 +121,10 @@ public final class ShellCommandClassifier {
                 verdict = Verdict.UNKNOWN;
             }
             boolean aware = subcommandAware(binary);
-            redirectKey.append(canonical(binary, subcommand, aware, segment.redirect, dangerousFlag));
+            redirectKey.append(canonical(binary, subcommand, aware, segment.redirect, mutation));
             redirectKey.append(segment.separator);
             if (v != Verdict.SAFE) {
-                keys.add(canonical(binary, subcommand, aware, false, dangerousFlag));
+                keys.add(canonical(binary, subcommand, aware, false, mutation));
             }
         }
         if (parsed.redirection) {
@@ -164,6 +170,35 @@ public final class ShellCommandClassifier {
                 if (flag.startsWith("--") && word.startsWith(flag + "=")) {
                     return flag;
                 }
+                if (isShortFlag(flag) && word.length() > flag.length() && word.startsWith(flag)) {
+                    return flag;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean isShortFlag(String flag) {
+        return flag.length() == 2 && flag.charAt(0) == '-';
+    }
+
+    private String mutationMarker(String binary, String subcommand, String[] words) {
+        String flag = dangerousFlag(binary, words);
+        if (flag != null) {
+            return flag;
+        }
+        Map<String, Set<String>> subFlags = DANGEROUS_SUBCOMMAND_FLAGS.get(binary);
+        if (subFlags == null || subcommand == null) {
+            return null;
+        }
+        Set<String> flags = subFlags.get(subcommand);
+        if (flags == null) {
+            return null;
+        }
+        for (int i = 2; i < words.length; i++) {
+            String word = normalize(words[i]);
+            if (flags.contains(word)) {
+                return word;
             }
         }
         return null;
@@ -173,12 +208,13 @@ public final class ShellCommandClassifier {
         return safeSubcommands.containsKey(binary) || dangerousSubcommands.containsKey(binary);
     }
 
-    private String canonical(String binary, String subcommand, boolean aware, boolean redirect, String dangerousFlag) {
+    private String canonical(String binary, String subcommand, boolean aware, boolean redirect, String mutation) {
         StringBuilder sb = new StringBuilder(binary);
-        if (dangerousFlag != null) {
-            sb.append(' ').append(dangerousFlag);
-        } else if (aware && subcommand != null) {
+        if (aware && subcommand != null) {
             sb.append(' ').append(subcommand);
+        }
+        if (mutation != null) {
+            sb.append(' ').append(mutation);
         }
         if (redirect) {
             sb.append(" >");

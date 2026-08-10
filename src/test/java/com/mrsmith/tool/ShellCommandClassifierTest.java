@@ -181,12 +181,12 @@ class ShellCommandClassifierTest {
     }
 
     @Test
-    void flagWinsOverConfigSubcommandForKey() {
+    void flagKeyIncludesConfiguredSubcommand() {
         ShellCommandClassifier configurable = new ShellCommandClassifier(
                 new ShellConfig(List.of("find foo"), List.of()));
         ShellCommandClassifier.Classification c = configurable.classify("find foo -delete");
         assertTrue(c.requiresApproval());
-        assertEquals(List.of("find -delete"), c.keys());
+        assertEquals(List.of("find foo -delete"), c.keys());
     }
 
     @Test
@@ -197,5 +197,48 @@ class ShellCommandClassifierTest {
     @Test
     void combinedRedirectRequiresApproval() {
         assertTrue(classifier.classify("cmd &> out").requiresApproval());
+    }
+
+    @Test
+    void sortAttachedShortOutputFlagRequiresApproval() {
+        ShellCommandClassifier.Classification c = classifier.classify("sort -oout.txt f");
+        assertTrue(c.requiresApproval());
+        assertEquals(List.of("sort -o"), c.keys());
+    }
+
+    @Test
+    void gitBranchDeleteRequiresApproval() {
+        ShellCommandClassifier.Classification c = classifier.classify("git branch -d old-branch");
+        assertTrue(c.requiresApproval());
+        assertEquals(List.of("git branch -d"), c.keys());
+    }
+
+    @Test
+    void gitBranchForceDeleteRequiresApproval() {
+        assertTrue(classifier.classify("git branch -D old-branch").requiresApproval());
+    }
+
+    @Test
+    void gitBranchListIsSafe() {
+        assertFalse(classifier.classify("git branch").requiresApproval());
+    }
+
+    @Test
+    void gitTagDeleteRequiresApproval() {
+        ShellCommandClassifier.Classification c = classifier.classify("git tag -d v1.0");
+        assertTrue(c.requiresApproval());
+        assertEquals(List.of("git tag -d"), c.keys());
+    }
+
+    @Test
+    void gitRemoteRemoveRequiresApproval() {
+        ShellCommandClassifier.Classification c = classifier.classify("git remote remove origin");
+        assertTrue(c.requiresApproval());
+        assertEquals(List.of("git remote remove"), c.keys());
+    }
+
+    @Test
+    void gitRemoteListIsSafe() {
+        assertFalse(classifier.classify("git remote -v").requiresApproval());
     }
 }
