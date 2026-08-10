@@ -38,6 +38,7 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -454,6 +455,17 @@ class ChatSessionTest {
         ChatMessage last = secondSend.get(secondSend.size() - 1);
         assertEquals(Role.TOOL, last.role());
         assertTrue(last.content().contains("declined"));
+    }
+
+    @Test
+    void toolApprovalTracksAndResets() {
+        ToolApproval approval = new ToolApproval();
+        assertFalse(approval.isAlwaysAllowed("shell"));
+        approval.allowAlways("shell");
+        assertTrue(approval.isAlwaysAllowed("shell"));
+        assertFalse(approval.isAlwaysAllowed("write_file"));
+        approval.reset();
+        assertFalse(approval.isAlwaysAllowed("shell"));
     }
 
     @Test
