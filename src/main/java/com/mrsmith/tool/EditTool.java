@@ -3,6 +3,7 @@ package com.mrsmith.tool;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.mrsmith.util.Json;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -12,7 +13,7 @@ import java.util.Arrays;
 
 public final class EditTool implements Tool {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final long MAX_BYTES = 1_048_576;
 
     private final Path root;
@@ -96,7 +97,7 @@ public final class EditTool implements Tool {
             String updated = count == 1
                     ? replaceFirst(content, oldString, newString)
                     : content.replace(oldString, newString);
-            Files.writeString(real, updated, StandardCharsets.UTF_8);
+            AtomicFiles.write(real, updated.getBytes(StandardCharsets.UTF_8));
             return new ToolResult("Edited " + root.relativize(target) + " (" + count + " replacements)", false);
         } catch (ToolException e) {
             return new ToolResult(e.getMessage(), true);

@@ -10,22 +10,32 @@ import com.mrsmith.provider.ProviderFactory;
 import com.mrsmith.provider.ToolCall;
 import com.mrsmith.session.SubAgentTranscriptStore;
 import com.mrsmith.session.TranscriptWriter;
+import com.mrsmith.skill.SkillCatalog;
 import com.mrsmith.tool.Resettable;
 import com.mrsmith.tool.TaskResult;
 import com.mrsmith.tool.TaskRunner;
 import com.mrsmith.tool.ToolRegistry;
+import com.mrsmith.tool.ToolRegistryFactory;
+import com.mrsmith.util.Warn;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 public final class SubAgentRunner implements TaskRunner, Resettable {
 
+    public record Context(AgentCatalog agents, ProviderFactory providerFactory,
+                          ToolRegistryFactory toolRegistryFactory, SkillCatalog skills,
+                          IO io, UsageTracker tracker,
+                          Supplier<AppConfig> currentConfig,
+                          Supplier<UUID> sessionId, Supplier<ToolBudget> budget) {
+    }
+
     private final AgentCatalog agents;
     private final ProviderFactory providerFactory;
-    private final Function<AppConfig, ToolRegistry> toolsBuilder;
+    private final ToolRegistryFactory toolRegistryFactory;
+    private final SkillCatalog skills;
     private final IO io;
     private final UsageTracker tracker;
     private final Supplier<AppConfig> currentConfig;
@@ -35,18 +45,16 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
 
     private int counter;
 
-    public SubAgentRunner(AgentCatalog agents, ProviderFactory providerFactory,
-                          Function<AppConfig, ToolRegistry> toolsBuilder, IO io,
-                          UsageTracker tracker, Supplier<AppConfig> currentConfig,
-                          Supplier<UUID> sessionId, Supplier<ToolBudget> budget) {
-        this.agents = agents;
-        this.providerFactory = providerFactory;
-        this.toolsBuilder = toolsBuilder;
-        this.io = io;
-        this.tracker = tracker;
-        this.currentConfig = currentConfig;
-        this.sessionId = sessionId;
-        this.budget = budget;
+    public SubAgentRunner(Context context) {
+        this.agents = context.agents();
+        this.providerFactory = context.providerFactory();
+        this.toolRegistryFactory = context.toolRegistryFactory();
+        this.skills = context.skills();
+        this.io = context.io();
+        this.tracker = context.tracker();
+        this.currentConfig = context.currentConfig();
+        this.sessionId = context.sessionId();
+        this.budget = context.budget();
         this.store = new SubAgentTranscriptStore(agents.sessionsDir(), sessionId);
     }
 
@@ -97,7 +105,7 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
         context.appendUser(prompt);
 
         Provider provider = providerFactory.create(config);
-        ToolRegistry tools = toolsBuilder.apply(config);
+        ToolRegistry tools = toolRegistryFactory.create(config, skills, io, null);
         TranscriptWriter transcripts = sid == null ? null : store.writer(n);
         try {
             if (transcripts != null) {
@@ -141,7 +149,7 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
                             transcripts.appendToolCall(sidForWrites(), call.id(), call.name(), call.arguments());
                         }
                     } catch (IOException e) {
-                        System.err.println("Warning: could not write subagent transcript: " + e.getMessage());
+                        Warn.warn("could not write subagent transcript: " + e.getMessage());
                     }
                 }
             }
@@ -153,7 +161,7 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
                     try {
                         transcripts.appendToolResult(sidForWrites(), id, content, error);
                     } catch (IOException e) {
-                        System.err.println("Warning: could not write subagent transcript: " + e.getMessage());
+                        Warn.warn("could not write subagent transcript: " + e.getMessage());
                     }
                 }
             }

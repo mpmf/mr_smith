@@ -2,6 +2,8 @@ package com.mrsmith.provider;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mrsmith.util.Json;
+import com.mrsmith.util.Warn;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -13,7 +15,7 @@ import java.util.function.Consumer;
 
 public final class SseParser {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     private SseParser() {
     }
@@ -131,7 +133,7 @@ public final class SseParser {
         try {
             return JSON.readTree(payload);
         } catch (IOException e) {
-            System.err.println("Warning: malformed SSE chunk, skipping: " + payload);
+            Warn.warn("malformed SSE chunk, skipping: " + payload);
             return null;
         }
     }

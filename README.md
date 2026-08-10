@@ -270,6 +270,7 @@ Single Maven module with disciplined package boundaries under `com.mrsmith`:
 | `config` | `AgentCatalog`, `ConfigLoader` (JSON config + env + CLI), config records |
 | `session` | `TranscriptWriter` port + `FileTranscriptWriter` (JSONL), sub-agent transcript store |
 | `skill` | `SkillCatalog`, `SkillFrontmatter` parser |
+| `util` | Shared `Json` ObjectMapper and `Warn` warning output |
 | `tool` | `Tool` port, built-in tool implementations, `ToolRegistry`, path containment |
 
 Key design points:

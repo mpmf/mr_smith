@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.mrsmith.io.IO;
+import com.mrsmith.util.Json;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -23,7 +24,7 @@ import java.util.Set;
 
 public final class WebFetchTool implements Tool {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final long MAX_BYTES = 1_048_576;
     private static final int MAX_REDIRECTS = 5;
 

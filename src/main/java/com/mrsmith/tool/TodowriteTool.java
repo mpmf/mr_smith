@@ -4,13 +4,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.mrsmith.util.Json;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public final class TodowriteTool implements Tool, Resettable {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final List<String> STATUSES = List.of("pending", "in_progress", "completed", "cancelled");
     private static final List<String> PRIORITIES = List.of("high", "medium", "low");
 

@@ -4,13 +4,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.mrsmith.skill.SkillCatalog;
+import com.mrsmith.util.Json;
 
 import java.util.HashSet;
 import java.util.Set;
 
 public final class SkillTool implements Tool, Resettable {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     private final SkillCatalog catalog;
     private final Set<String> loaded = new HashSet<>();

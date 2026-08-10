@@ -2,6 +2,7 @@ package com.mrsmith.config;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mrsmith.util.Json;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -15,7 +16,7 @@ public final class ConfigLoader {
     public static final Path DEFAULT_CONFIG_PATH = Path.of(
             System.getProperty("user.home"), ".config", "mrsmith", "config.json");
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     private ConfigLoader() {
     }
