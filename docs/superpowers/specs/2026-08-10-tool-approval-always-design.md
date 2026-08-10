@@ -65,10 +65,10 @@ injected into the tool loop.
 
 ### Prompt
 
-The approval prompt in `ToolLoop` changes from `[y/N]` to `[y/N/a]`:
+The approval prompt in `ToolLoop` changes from `[y/N]` to `[y/N/a=always]`:
 
 ```
-Run <name>(<args>) [y/N/a]? 
+Run <name>(<args>) [y/N/a=always]? 
 ```
 
 Input handling:
