@@ -97,7 +97,7 @@ public final class EditTool implements Tool {
             String updated = count == 1
                     ? replaceFirst(content, oldString, newString)
                     : content.replace(oldString, newString);
-            Files.writeString(real, updated, StandardCharsets.UTF_8);
+            AtomicFiles.write(real, updated.getBytes(StandardCharsets.UTF_8));
             return new ToolResult("Edited " + root.relativize(target) + " (" + count + " replacements)", false);
         } catch (ToolException e) {
             return new ToolResult(e.getMessage(), true);

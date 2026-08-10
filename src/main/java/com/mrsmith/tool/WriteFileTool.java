@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.mrsmith.util.Json;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -73,7 +74,7 @@ public final class WriteFileTool implements Tool {
             if (parent != null) {
                 Files.createDirectories(parent);
             }
-            Files.writeString(target, content);
+            AtomicFiles.write(target, content.getBytes(StandardCharsets.UTF_8));
         } catch (ToolException e) {
             return new ToolResult(e.getMessage(), true);
         } catch (IOException e) {
