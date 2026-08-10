@@ -64,6 +64,12 @@ URL's host (from `URI.getHost()`):
      check, because the JDK's `isSiteLocalAddress()` only matches the deprecated
      `fec0::/10` and misses IPv6 ULA
 3. Plain hostnames (not IP literals) are not classified as private.
+4. Hex/octal IPv4 notations (`0x7f000001`, `0177.0.0.1`) are intentionally not
+   treated as literals: Java's `InetAddress` resolver rejects hex forms at parse
+   (`UnknownHostException`, so nothing is fetchable) and parses leading-zero
+   octal forms as decimal (`0177.0.0.1` → `177.0.0.1`, a public address). The
+   `\d+(\.\d+){0,3}` gate therefore covers exactly the literal encodings Java's
+   resolver can turn into a connectable address, leaving no fetchable bypass.
 
 ### Approval flow
 

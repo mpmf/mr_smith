@@ -397,6 +397,17 @@ class WebFetchToolTest {
         assertTrue(result.error());
         assertTrue(result.content().contains("too many redirects"));
     }
+
+    @Test
+    void redirectToNonHttpSchemeIsRejected() {
+        HttpHeaders headers = HttpHeaders.of(Map.of("Location", List.of("ftp://example.com/file")),
+                (name, value) -> true);
+        HttpResponse<InputStream> response = new StubResponse(302, headers, InputStream.nullInputStream());
+        WebFetchTool tool = new WebFetchTool(new StubHttpClient(response), 5000, new StubIo(List.of()));
+        ToolResult result = fetch(tool, "http://example.com/start");
+        assertTrue(result.error());
+        assertTrue(result.content().contains("invalid redirect location"));
+    }
 }
 ```
 
