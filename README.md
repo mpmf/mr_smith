@@ -171,7 +171,7 @@ that modifies the filesystem prompts for confirmation** (`y/N`).
 | `write_file` | no | Writes a file relative to the CWD, creating parent directories |
 | `list_dir` | yes | Lists directory entries |
 | `glob` | yes | Matches files under the CWD (e.g. `src/**/*.java`) |
-| `web_fetch` | yes | Fetches an HTTP(S) URL and returns the body text (1 MiB cap, follows redirects) |
+| `web_fetch` | yes | Fetches an HTTP(S) URL and returns the body text (1 MiB cap); asks you before fetching private/link-local/localhost hosts, and re-checks every redirect hop |
 
 ### Always-on tools (available to every agent)
 
