@@ -167,7 +167,9 @@ Anything else is sent to the LLM. Unknown `/` commands are rejected with a hint.
 
 The model can call tools during a turn; results are fed back so it can iterate
 until it produces a final answer. **Read-only tools run automatically; anything
-that modifies the filesystem prompts for confirmation** (`y/N`, or `a` to always allow). The `shell` tool further classifies each command: read-only commands run automatically, while filesystem-modifying or unknown commands prompt.
+that modifies the filesystem prompts for confirmation** (`y/N`, or `a` to always
+allow). The `shell` tool further classifies each command: read-only commands run
+automatically, while filesystem-modifying or unknown commands prompt.
 
 ### Per-agent built-ins (opt-in via `agents[].tools`)
 
