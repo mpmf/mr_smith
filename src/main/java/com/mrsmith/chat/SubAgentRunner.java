@@ -1,7 +1,7 @@
 package com.mrsmith.chat;
 
 import com.mrsmith.config.AgentCatalog;
-import com.mrsmith.config.AppConfig;
+import com.mrsmith.config.AgentRuntime;
 import com.mrsmith.config.ConfigException;
 import com.mrsmith.io.IO;
 import com.mrsmith.provider.ChatMessage;
@@ -28,7 +28,7 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
     public record Context(AgentCatalog agents, ProviderFactory providerFactory,
                           ToolRegistryFactory toolRegistryFactory, SkillCatalog skills,
                           IO io, UsageTracker tracker,
-                          Supplier<AppConfig> currentConfig,
+                          Supplier<AgentRuntime> currentConfig,
                           Supplier<UUID> sessionId, Supplier<ToolBudget> budget) {
     }
 
@@ -38,7 +38,7 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
     private final SkillCatalog skills;
     private final IO io;
     private final UsageTracker tracker;
-    private final Supplier<AppConfig> currentConfig;
+    private final Supplier<AgentRuntime> currentConfig;
     private final Supplier<UUID> sessionId;
     private final Supplier<ToolBudget> budget;
     private final SubAgentTranscriptStore store;
@@ -66,7 +66,7 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
     @Override
     public TaskResult run(String prompt, String agentName, String taskId) {
         UUID sid = sessionId.get();
-        AppConfig config = resolveConfig(agentName);
+        AgentRuntime config = resolveConfig(agentName);
         if (config == null) {
             return new TaskResult(null, "Unknown agent: " + agentName, true);
         }
@@ -87,7 +87,7 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
             return new TaskResult(null, "Unknown task_id: " + taskId, true);
         }
         FullContextBuilder context = new FullContextBuilder();
-        context.start(config.systemPrompt());
+        context.start(config.agent().systemPrompt());
         List<ChatMessage> replayed = List.of();
         if (resume) {
             try {
@@ -127,7 +127,7 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
         }
     }
 
-    private AppConfig resolveConfig(String agentName) {
+    private AgentRuntime resolveConfig(String agentName) {
         if (agentName == null || agentName.isBlank()) {
             return currentConfig.get();
         }
@@ -203,8 +203,8 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
         return Integer.parseInt(rest);
     }
 
-    private static int maxToolRounds(AppConfig config) {
-        Integer value = config.maxToolRounds();
+    private static int maxToolRounds(AgentRuntime runtime) {
+        Integer value = runtime.agent().maxToolRounds();
         return value == null ? ToolLoop.DEFAULT_MAX_TOOL_ROUNDS : value;
     }
 }

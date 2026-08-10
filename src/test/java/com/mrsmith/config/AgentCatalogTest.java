@@ -17,14 +17,13 @@ class AgentCatalogTest {
     @Test
     void resolveMergesProviderAgentAndGlobals() {
         AgentCatalog catalog = new AgentCatalog(List.of(provider), List.of(agent), "coder", false, Path.of("/tmp/s"));
-        AppConfig config = catalog.resolve("coder");
-        assertEquals("sk", config.apiKey());
-        assertEquals("https://example.com/v1", config.baseUrl());
-        assertEquals("model-x", config.model());
-        assertEquals("be helpful", config.systemPrompt());
-        assertEquals(128000, config.maxContextTokens());
-        assertEquals(false, config.includeUsage());
-        assertEquals(Path.of("/tmp/s"), config.sessionsDir());
+        AgentRuntime runtime = catalog.resolve("coder");
+        assertEquals("sk", runtime.provider().apiKey());
+        assertEquals("https://example.com/v1", runtime.provider().baseUrl());
+        assertEquals("model-x", runtime.agent().model());
+        assertEquals("be helpful", runtime.agent().systemPrompt());
+        assertEquals(128000, runtime.agent().maxContextTokens());
+        assertEquals(false, runtime.globals().includeUsage());
     }
 
     @Test
@@ -94,13 +93,13 @@ class AgentCatalogTest {
     void resolveCarriesToolNames() {
         AgentConfig withTools = new AgentConfig("coder", "opencode", "model-x", null, null, List.of("shell", "read_file"));
         AgentCatalog catalog = new AgentCatalog(List.of(provider), List.of(withTools), "coder", true, Path.of("/tmp/s"));
-        assertEquals(List.of("shell", "read_file"), catalog.resolve("coder").tools());
+        assertEquals(List.of("shell", "read_file"), catalog.resolve("coder").agent().tools());
     }
 
     @Test
     void emptyToolsByDefault() {
         AgentCatalog catalog = new AgentCatalog(List.of(provider), List.of(agent), "coder", true, Path.of("/tmp/s"));
-        assertEquals(List.of(), catalog.resolve("coder").tools());
+        assertEquals(List.of(), catalog.resolve("coder").agent().tools());
     }
 
     @Test
@@ -137,7 +136,7 @@ class AgentCatalogTest {
     void resolveCarriesMaxToolRounds() {
         AgentConfig withRounds = new AgentConfig("coder", "opencode", "model-x", null, null, 5);
         AgentCatalog catalog = new AgentCatalog(List.of(provider), List.of(withRounds), "coder", true, Path.of("/tmp/s"));
-        assertEquals(5, catalog.resolve("coder").maxToolRounds());
+        assertEquals(5, catalog.resolve("coder").agent().maxToolRounds());
     }
 
     @Test
@@ -151,12 +150,12 @@ class AgentCatalogTest {
     void resolveCarriesMaxToolCallsPerSession() {
         AgentConfig withBudget = new AgentConfig("coder", "opencode", "model-x", null, null, null, 200);
         AgentCatalog catalog = new AgentCatalog(List.of(provider), List.of(withBudget), "coder", true, Path.of("/tmp/s"));
-        assertEquals(200, catalog.resolve("coder").maxToolCallsPerSession());
+        assertEquals(200, catalog.resolve("coder").agent().maxToolCallsPerSession());
     }
 
     @Test
     void maxToolCallsPerSessionDefaultsToNull() {
         AgentCatalog catalog = new AgentCatalog(List.of(provider), List.of(agent), "coder", true, Path.of("/tmp/s"));
-        assertEquals(null, catalog.resolve("coder").maxToolCallsPerSession());
+        assertEquals(null, catalog.resolve("coder").agent().maxToolCallsPerSession());
     }
 }

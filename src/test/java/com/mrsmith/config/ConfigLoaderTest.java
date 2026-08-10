@@ -57,13 +57,13 @@ class ConfigLoaderTest {
         AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
         assertEquals("coder", catalog.defaultName());
         assertEquals(Path.of("/tmp/my-sessions"), catalog.sessionsDir());
-        AppConfig config = catalog.resolve("coder");
-        assertEquals("sk-x", config.apiKey());
-        assertEquals("https://opencode.ai/zen/go/v1", config.baseUrl());
-        assertEquals("model-x", config.model());
-        assertEquals("be helpful", config.systemPrompt());
-        assertEquals(128000, config.maxContextTokens());
-        assertFalse(config.includeUsage());
+        AgentRuntime runtime = catalog.resolve("coder");
+        assertEquals("sk-x", runtime.provider().apiKey());
+        assertEquals("https://opencode.ai/zen/go/v1", runtime.provider().baseUrl());
+        assertEquals("model-x", runtime.agent().model());
+        assertEquals("be helpful", runtime.agent().systemPrompt());
+        assertEquals(128000, runtime.agent().maxContextTokens());
+        assertFalse(runtime.globals().includeUsage());
     }
 
     @Test
@@ -76,7 +76,7 @@ class ConfigLoaderTest {
                 }
                 """);
         AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
-        assertTrue(catalog.resolve("a").includeUsage());
+        assertTrue(catalog.resolve("a").globals().includeUsage());
         assertEquals(Path.of(System.getProperty("user.home"), ".config", "mrsmith", "sessions"),
                 catalog.sessionsDir());
     }
@@ -120,7 +120,7 @@ class ConfigLoaderTest {
                 }
                 """);
         AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
-        assertEquals(List.of("shell", "read_file"), catalog.resolve("a").tools());
+        assertEquals(List.of("shell", "read_file"), catalog.resolve("a").agent().tools());
     }
 
     @Test
@@ -133,7 +133,7 @@ class ConfigLoaderTest {
                 }
                 """);
         AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
-        assertEquals(List.of(), catalog.resolve("a").tools());
+        assertEquals(List.of(), catalog.resolve("a").agent().tools());
     }
 
     @Test
@@ -207,7 +207,7 @@ class ConfigLoaderTest {
                 }
                 """);
         AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
-        assertEquals(12, catalog.resolve("a").maxToolRounds());
+        assertEquals(12, catalog.resolve("a").agent().maxToolRounds());
     }
 
     @Test
@@ -220,7 +220,7 @@ class ConfigLoaderTest {
                 }
                 """);
         AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
-        assertEquals(null, catalog.resolve("a").maxToolRounds());
+        assertEquals(null, catalog.resolve("a").agent().maxToolRounds());
     }
 
     @Test
@@ -233,7 +233,7 @@ class ConfigLoaderTest {
                 }
                 """);
         AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
-        assertEquals(200, catalog.resolve("a").maxToolCallsPerSession());
+        assertEquals(200, catalog.resolve("a").agent().maxToolCallsPerSession());
     }
 
     @Test
@@ -246,7 +246,20 @@ class ConfigLoaderTest {
                 }
                 """);
         AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
-        assertEquals(null, catalog.resolve("a").maxToolCallsPerSession());
+        assertEquals(null, catalog.resolve("a").agent().maxToolCallsPerSession());
+    }
+
+    @Test
+    void baseUrlTrailingSlashIsStripped() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "p", "apiKey": "sk-x", "baseUrl": "https://example.com/v1/" } ],
+                  "agents": [ { "name": "a", "provider": "p", "model": "m" } ],
+                  "defaultAgent": "a"
+                }
+                """);
+        AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
+        assertEquals("https://example.com/v1", catalog.resolve("a").provider().baseUrl());
     }
 
     private Path noFile() {
