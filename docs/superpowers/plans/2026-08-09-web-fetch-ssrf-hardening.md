@@ -257,15 +257,19 @@ class WebFetchToolTest {
     @Test
     void classifiesPrivateAndPublicHosts() {
         assertTrue(WebFetchTool.isPrivateHost("localhost"));
+        assertTrue(WebFetchTool.isPrivateHost("localhost."));
         assertTrue(WebFetchTool.isPrivateHost("foo.localhost"));
+        assertTrue(WebFetchTool.isPrivateHost("foo.localhost."));
         assertTrue(WebFetchTool.isPrivateHost("127.0.0.1"));
         assertTrue(WebFetchTool.isPrivateHost("10.0.0.5"));
         assertTrue(WebFetchTool.isPrivateHost("192.168.1.1"));
         assertTrue(WebFetchTool.isPrivateHost("172.16.0.1"));
         assertTrue(WebFetchTool.isPrivateHost("169.254.169.254"));
+        assertTrue(WebFetchTool.isPrivateHost("::ffff:169.254.169.254"));
         assertTrue(WebFetchTool.isPrivateHost("::1"));
         assertTrue(WebFetchTool.isPrivateHost("::"));
         assertTrue(WebFetchTool.isPrivateHost("fe80::1"));
+        assertTrue(WebFetchTool.isPrivateHost("fe80::1%eth0"));
         assertTrue(WebFetchTool.isPrivateHost("fc00::1"));
         assertTrue(WebFetchTool.isPrivateHost("0.0.0.0"));
         assertTrue(WebFetchTool.isPrivateHost("2130706433"));
@@ -447,15 +451,19 @@ The classifier is the SSRF boundary, so pin it fully before implementing. In `sr
     @Test
     void classifiesPrivateAndPublicHosts() {
         assertTrue(WebFetchTool.isPrivateHost("localhost"));
+        assertTrue(WebFetchTool.isPrivateHost("localhost."));
         assertTrue(WebFetchTool.isPrivateHost("foo.localhost"));
+        assertTrue(WebFetchTool.isPrivateHost("foo.localhost."));
         assertTrue(WebFetchTool.isPrivateHost("127.0.0.1"));
         assertTrue(WebFetchTool.isPrivateHost("10.0.0.5"));
         assertTrue(WebFetchTool.isPrivateHost("192.168.1.1"));
         assertTrue(WebFetchTool.isPrivateHost("172.16.0.1"));
         assertTrue(WebFetchTool.isPrivateHost("169.254.169.254"));
+        assertTrue(WebFetchTool.isPrivateHost("::ffff:169.254.169.254"));
         assertTrue(WebFetchTool.isPrivateHost("::1"));
         assertTrue(WebFetchTool.isPrivateHost("::"));
         assertTrue(WebFetchTool.isPrivateHost("fe80::1"));
+        assertTrue(WebFetchTool.isPrivateHost("fe80::1%eth0"));
         assertTrue(WebFetchTool.isPrivateHost("fc00::1"));
         assertTrue(WebFetchTool.isPrivateHost("0.0.0.0"));
         assertTrue(WebFetchTool.isPrivateHost("2130706433"));
@@ -564,13 +572,12 @@ public final class WebFetchTool implements Tool {
     }
 
     private ToolResult fetch(URI uri, Set<String> approvedHosts, int redirects) {
-        String host = uri.getHost();
-        String cacheKey = host.toLowerCase(Locale.ROOT);
-        if (isPrivateHost(host) && !approvedHosts.contains(cacheKey) && !userApproves(uri)) {
+        String host = normalizeHost(uri.getHost());
+        if (isPrivateHost(host) && !approvedHosts.contains(host) && !userApproves(uri)) {
             return new ToolResult("User did not approve fetching " + uri
                     + " (private/link-local/localhost host).", true);
         }
-        approvedHosts.add(cacheKey);
+        approvedHosts.add(host);
         HttpRequest request;
         try {
             request = HttpRequest.newBuilder(uri)
@@ -654,7 +661,7 @@ public final class WebFetchTool implements Tool {
     }
 
     static boolean isPrivateHost(String host) {
-        String h = host.toLowerCase(Locale.ROOT);
+        String h = normalizeHost(host);
         if (h.equals("localhost") || h.endsWith(".localhost")) {
             return true;
         }
@@ -669,6 +676,18 @@ public final class WebFetchTool implements Tool {
         } catch (UnknownHostException e) {
             return false;
         }
+    }
+
+    private static String normalizeHost(String host) {
+        String h = host.toLowerCase(Locale.ROOT);
+        if (h.endsWith(".")) {
+            h = h.substring(0, h.length() - 1);
+        }
+        int zone = h.indexOf('%');
+        if (zone >= 0) {
+            h = h.substring(0, zone);
+        }
+        return h;
     }
 
     private static boolean isUniqueLocalAddress(InetAddress address) {
