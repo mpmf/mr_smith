@@ -91,8 +91,14 @@ public final class ShellCommandClassifier {
      `git tag`); any other subcommand (or a bare binary with no subcommand) →
      DANGEROUS.
    - a **flag-aware** binary — `find` with `-delete`, `-exec`, `-execdir`,
-     `-ok`, or `-okdir`, and `sort` with `-o` or `--output[=...]` → DANGEROUS;
-     otherwise `find` and `sort` stay SAFE.
+      `-ok`, or `-okdir`, and `sort` with `-o` (including attached short forms
+      like `-oout`) or `--output[=...]` → DANGEROUS; otherwise `find` and
+      `sort` stay SAFE.
+   - a **subcommand-mutation** rule for `git` — the safe subcommands `branch`,
+      `tag`, and `remote` are DANGEROUS when they carry mutation words:
+      `branch` with `-d`/`-D`/`--delete`, `tag` with `-d`/`--delete`, `remote`
+      with `remove`/`rm`. Plain listing forms (`git branch`, `git tag`,
+      `git remote -v`) stay SAFE.
    - in the **safe** lists — the config `shellHarmlessCommands` and the
      built-in safe set (`ls`, `cat`, `pwd`, `echo`, `printf`, `head`, `tail`,
      `wc`, `grep`, `find`, `diff`, `sort`, `uniq`, `cut`, `tr`, `file`,
@@ -111,11 +117,11 @@ public final class ShellCommandClassifier {
 **Always-allow key(s):**
 
 - **No redirection** — one key per non-SAFE segment: the binary name, plus the
-  subcommand when the binary is subcommand-aware, or the dangerous flag when a
-  flag-aware binary uses one (e.g. `find -delete`). `git commit -m "x"` → key
-  `git commit`; `rm -rf target` → key `rm`; `mvn -q clean install` → key
-  `mvn`; the chain `git add app.js && git commit -m wip` → keys `git add` and
-  `git commit`.
+  subcommand when the binary is subcommand-aware, plus the dangerous flag or
+  git mutation word when one applies (e.g. `find -delete`, `git branch -d`,
+  `sort -o`). `git commit -m "x"` → key `git commit`; `rm -rf target` → key
+  `rm`; `mvn -q clean install` → key `mvn`; the chain
+  `git add app.js && git commit -m wip` → keys `git add` and `git commit`.
 - **Redirection present** — a single key: the whole command normalized (all
   arguments stripped, redirection operators preserved, separators preserved).
   `cat f > out` → key `cat >`.
@@ -257,23 +263,26 @@ the model knows what to expect.
   - redirect `cat f > out` → true, key `cat >`; quoted `echo ">"` → false
     (quote-aware).
   - `git status` → false; `git commit -m x` → true, key `git commit`; bare
-    `git` or unknown git subcommand → true.
+    `git` or unknown git subcommand → true; `git branch` / `git remote -v`
+    → false; `git branch -d` / `git tag -d` / `git remote remove` → true.
+  - `find . -delete` / `find -exec` / `sort -o` / `sort --output=` /
+    `sort -oout` → true (key `find -delete`, `sort -o`, ...).
   - config: `shellHarmlessCommands: ["kubectl get"]` → `kubectl get` false,
     `kubectl apply` true; `shellDangerousCommands: ["echo"]` overrides built-in
     safe → true.
   - key stripping: `git commit -m x && rm -rf t` → keys `git commit`, `rm`.
 - `ShellToolTest`: `approvalCheck` returns `null` for safe, a namespaced key
-  (`shell:rm`) for dangerous.
+  (`shell:rm`) for dangerous; keys are namespaced (`shell:edit` does not allow
+  the `edit` tool).
 - `ChatSessionTest`:
   - safe shell command runs without prompting.
   - dangerous shell command prompts; `a` records the namespaced command key
     (`shell:touch`); a later identical command runs without prompting.
   - chain `a` records each segment key.
-  - existing `allowAlways("shell")` test updated to pre-approve a namespaced
-    command key.
+  - multi-key always-allow (`MultiKeyTool`) prompts once and records all keys.
   - existing confirm/decline tests pass unchanged.
-- `SubAgentRunnerTest`: shared always-allow works with a command key inside a
-  sub-agent.
+- `SubAgentRunnerTest`: shared always-allow works with a namespaced command key
+  (`shell:touch`) inside a sub-agent.
 - `ToolRegistryTest`: registry builds `ShellTool` from a `ShellConfig`.
 - `ConfigLoaderTest`: new agent fields parsed (present and absent).
 - Full suite stays green.
