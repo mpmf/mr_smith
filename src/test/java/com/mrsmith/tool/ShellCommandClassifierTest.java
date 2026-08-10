@@ -172,4 +172,30 @@ class ShellCommandClassifierTest {
     void stderrRedirectRequiresApproval() {
         assertTrue(classifier.classify("echo hi 2> err").requiresApproval());
     }
+
+    @Test
+    void sortLongOutputFlagRequiresApproval() {
+        ShellCommandClassifier.Classification c = classifier.classify("sort --output=out.txt f");
+        assertTrue(c.requiresApproval());
+        assertEquals(List.of("sort --output"), c.keys());
+    }
+
+    @Test
+    void flagWinsOverConfigSubcommandForKey() {
+        ShellCommandClassifier configurable = new ShellCommandClassifier(
+                new ShellConfig(List.of("find foo"), List.of()));
+        ShellCommandClassifier.Classification c = configurable.classify("find foo -delete");
+        assertTrue(c.requiresApproval());
+        assertEquals(List.of("find -delete"), c.keys());
+    }
+
+    @Test
+    void findOkFlagRequiresApproval() {
+        assertTrue(classifier.classify("find . -ok rm {} \\;").requiresApproval());
+    }
+
+    @Test
+    void combinedRedirectRequiresApproval() {
+        assertTrue(classifier.classify("cmd &> out").requiresApproval());
+    }
 }

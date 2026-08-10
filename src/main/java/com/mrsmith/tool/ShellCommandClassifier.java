@@ -48,7 +48,7 @@ public final class ShellCommandClassifier {
 
     private static final Map<String, Set<String>> DANGEROUS_FLAGS = Map.of(
             "find", Set.of("-delete", "-exec", "-execdir", "-ok", "-okdir"),
-            "sort", Set.of("-o"));
+            "sort", Set.of("-o", "--output"));
 
     private final Set<String> safeBinaries;
     private final Set<String> dangerousBinaries;
@@ -160,6 +160,11 @@ public final class ShellCommandClassifier {
             if (flags.contains(word)) {
                 return word;
             }
+            for (String flag : flags) {
+                if (flag.startsWith("--") && word.startsWith(flag + "=")) {
+                    return flag;
+                }
+            }
         }
         return null;
     }
@@ -170,10 +175,10 @@ public final class ShellCommandClassifier {
 
     private String canonical(String binary, String subcommand, boolean aware, boolean redirect, String dangerousFlag) {
         StringBuilder sb = new StringBuilder(binary);
-        if (aware && subcommand != null) {
-            sb.append(' ').append(subcommand);
-        } else if (dangerousFlag != null) {
+        if (dangerousFlag != null) {
             sb.append(' ').append(dangerousFlag);
+        } else if (aware && subcommand != null) {
+            sb.append(' ').append(subcommand);
         }
         if (redirect) {
             sb.append(" >");

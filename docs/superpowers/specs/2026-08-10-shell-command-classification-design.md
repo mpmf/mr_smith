@@ -91,8 +91,8 @@ public final class ShellCommandClassifier {
      `git tag`); any other subcommand (or a bare binary with no subcommand) →
      DANGEROUS.
    - a **flag-aware** binary — `find` with `-delete`, `-exec`, `-execdir`,
-     `-ok`, or `-okdir`, and `sort` with `-o` → DANGEROUS; otherwise `find`
-     and `sort` stay SAFE.
+     `-ok`, or `-okdir`, and `sort` with `-o` or `--output[=...]` → DANGEROUS;
+     otherwise `find` and `sort` stay SAFE.
    - in the **safe** lists — the config `shellHarmlessCommands` and the
      built-in safe set (`ls`, `cat`, `pwd`, `echo`, `printf`, `head`, `tail`,
      `wc`, `grep`, `find`, `diff`, `sort`, `uniq`, `cut`, `tr`, `file`,
