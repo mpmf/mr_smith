@@ -232,9 +232,12 @@ class WebFetchToolTest {
         assertTrue(WebFetchTool.isPrivateHost("fe80::1"));
         assertTrue(WebFetchTool.isPrivateHost("fc00::1"));
         assertTrue(WebFetchTool.isPrivateHost("0.0.0.0"));
+        assertTrue(WebFetchTool.isPrivateHost("2130706433"));
+        assertTrue(WebFetchTool.isPrivateHost("3232235777"));
         assertFalse(WebFetchTool.isPrivateHost("example.com"));
         assertFalse(WebFetchTool.isPrivateHost("api.openai.com"));
         assertFalse(WebFetchTool.isPrivateHost("8.8.8.8"));
+        assertFalse(WebFetchTool.isPrivateHost("134744072"));
     }
 
     @Test
@@ -291,6 +294,18 @@ class WebFetchToolTest {
         assertTrue(result.error());
         assertTrue(result.content().contains("did not approve"));
         assertEquals(1, io.prompts.size());
+    }
+
+    @Test
+    void eofAtPromptDeclinesWithoutRequest() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200).setBody("secret"));
+        StubIo io = new StubIo(List.of());
+        WebFetchTool tool = tool(io);
+        ToolResult result = fetch(tool, server.url("/page").toString());
+        assertTrue(result.error());
+        assertTrue(result.content().contains("did not approve"));
+        assertEquals(1, io.prompts.size());
+        assertEquals(0, server.getRequestCount());
     }
 
     @Test
