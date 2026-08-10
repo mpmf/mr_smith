@@ -75,7 +75,7 @@ class SkillToolTest {
     void tracksLoadedNames() throws IOException {
         SkillTool tool = new SkillTool(catalog("coding", "Write Java.", "b"));
         assertTrue(tool.load("coding"));
-        assertTrue(tool.isLoaded("coding"));
+        assertTrue(tool.loaded().contains("coding"));
         assertFalse(tool.load("coding"));
     }
 

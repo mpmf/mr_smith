@@ -39,10 +39,6 @@ public final class SkillTool implements Tool, Resettable {
         return Set.copyOf(loaded);
     }
 
-    public boolean isLoaded(String name) {
-        return loaded.contains(name);
-    }
-
     public boolean load(String name) {
         return loaded.add(name);
     }

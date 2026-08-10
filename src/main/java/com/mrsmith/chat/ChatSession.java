@@ -15,16 +15,16 @@ import com.mrsmith.skill.Skill;
 import com.mrsmith.skill.SkillCatalog;
 import com.mrsmith.tool.SkillTool;
 import com.mrsmith.tool.TodowriteTool;
-import com.mrsmith.tool.Tool;
 import com.mrsmith.tool.ToolRegistry;
 import com.mrsmith.tool.ToolRegistryFactory;
+import com.mrsmith.tool.ToolState;
 import com.mrsmith.util.Warn;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 public class ChatSession {
@@ -50,6 +50,7 @@ public class ChatSession {
     private AgentRuntime runtime;
     private Provider provider;
     private ToolRegistry toolRegistry;
+    private ToolState toolState;
     private SubAgentRunner subAgentRunner;
     private ToolBudget toolBudget;
 
@@ -146,6 +147,7 @@ public class ChatSession {
                 agents, providerFactory, toolRegistryFactory, skills, io, tracker,
                 () -> runtime, () -> currentSessionId, () -> toolBudget));
         toolRegistry = toolRegistryFactory.create(runtime, skills, io, subAgentRunner);
+        toolState = toolRegistry;
     }
 
     private void startFreshSession() {
@@ -201,52 +203,31 @@ public class ChatSession {
             io.writeLine("No skills found.");
             return;
         }
-        SkillTool skillTool = skillTool();
+        Set<String> loaded = toolState.loadedSkills();
         StringBuilder report = new StringBuilder("Skills:");
         for (String name : skills.names()) {
             Skill skill = skills.find(name).orElseThrow();
-            String marker = skillTool != null && skillTool.isLoaded(name) ? "*" : "";
+            String marker = loaded.contains(name) ? "*" : "";
             report.append("\n  ").append(name).append(marker).append("  ").append(skill.description());
         }
         io.writeLine(report.toString());
     }
 
     private void loadSkill(String name) {
-        if (skills.find(name).isEmpty()) {
-            io.writeLine("Unknown skill: " + name);
+        SkillTool.SkillLoad result = toolState.loadSkill(name);
+        if (result.error() || !result.loaded()) {
+            io.writeLine(result.message());
             return;
         }
-        SkillTool skillTool = skillTool();
-        if (skillTool == null) {
-            io.writeLine("Skill tool is not available.");
-            return;
-        }
-        if (!skillTool.load(name)) {
-            io.writeLine("Skill '" + name + "' is already loaded.");
-            return;
-        }
-        String content = skills.render(name);
+        String content = result.content();
         history.add(new ChatMessage(Role.SYSTEM, content));
         contextBuilder.appendSystem(content);
         appendSkillLoad(name);
         io.writeLine("Loaded skill: " + name);
     }
 
-    private SkillTool skillTool() {
-        Optional<Tool> tool = toolRegistry.find("skill");
-        if (tool.isPresent() && tool.get() instanceof SkillTool skillTool) {
-            return skillTool;
-        }
-        return null;
-    }
-
     private void listTasks() {
-        TodowriteTool todoTool = todoTool();
-        if (todoTool == null) {
-            io.writeLine("No task list available.");
-            return;
-        }
-        List<TodowriteTool.Task> tasks = todoTool.tasks();
+        List<TodowriteTool.Task> tasks = toolState.tasks();
         if (tasks.isEmpty()) {
             io.writeLine("No tasks.");
             return;
@@ -257,14 +238,6 @@ public class ChatSession {
                     .append(task.priority()).append("  ").append(task.content());
         }
         io.writeLine(report.toString());
-    }
-
-    private TodowriteTool todoTool() {
-        Optional<Tool> tool = toolRegistry.find("todowrite");
-        if (tool.isPresent() && tool.get() instanceof TodowriteTool todoTool) {
-            return todoTool;
-        }
-        return null;
     }
 
     private void appendUser(String content) {
