@@ -1,7 +1,7 @@
 package com.mrsmith.chat;
 
 import com.mrsmith.config.AgentCatalog;
-import com.mrsmith.config.AppConfig;
+import com.mrsmith.config.AgentRuntime;
 import com.mrsmith.io.IO;
 import com.mrsmith.provider.ChatMessage;
 import com.mrsmith.provider.Provider;
@@ -47,7 +47,7 @@ public class ChatSession {
     private boolean warned100;
     private UUID currentSessionId;
     private String currentAgentName;
-    private AppConfig config;
+    private AgentRuntime runtime;
     private Provider provider;
     private ToolRegistry toolRegistry;
     private SubAgentRunner subAgentRunner;
@@ -135,17 +135,17 @@ public class ChatSession {
     }
 
     private int maxToolRounds() {
-        Integer value = config.maxToolRounds();
+        Integer value = runtime.agent().maxToolRounds();
         return value == null ? ToolLoop.DEFAULT_MAX_TOOL_ROUNDS : value;
     }
 
     private void applyAgent() {
-        config = agents.resolve(currentAgentName);
-        provider = providerFactory.create(config);
+        runtime = agents.resolve(currentAgentName);
+        provider = providerFactory.create(runtime);
         subAgentRunner = new SubAgentRunner(new SubAgentRunner.Context(
                 agents, providerFactory, toolRegistryFactory, skills, io, tracker,
-                () -> config, () -> currentSessionId, () -> toolBudget));
-        toolRegistry = toolRegistryFactory.create(config, skills, io, subAgentRunner);
+                () -> runtime, () -> currentSessionId, () -> toolBudget));
+        toolRegistry = toolRegistryFactory.create(runtime, skills, io, subAgentRunner);
     }
 
     private void startFreshSession() {
@@ -153,8 +153,8 @@ public class ChatSession {
         tracker.reset();
         warned85 = false;
         warned100 = false;
-        toolBudget = new ToolBudget(config.maxToolCallsPerSession(), io);
-        contextBuilder.start(composeSystemPrompt(config.systemPrompt()));
+        toolBudget = new ToolBudget(runtime.agent().maxToolCallsPerSession(), io);
+        contextBuilder.start(composeSystemPrompt(runtime.agent().systemPrompt()));
         toolRegistry.resetSession();
         subAgentRunner.reset();
         startNewSession();
@@ -337,25 +337,25 @@ public class ChatSession {
                 warned100 = true;
                 io.writeLine(String.format(Locale.US,
                         "Warning: session reached 100%% of your configured %,d-token context limit — consider /reset",
-                        config.maxContextTokens()));
+                        runtime.agent().maxContextTokens()));
             }
         } else if (pct >= WARN_THRESHOLD_PERCENT) {
             if (!warned85) {
                 warned85 = true;
                 io.writeLine(String.format(Locale.US,
                         "Warning: session at %d%% of your configured %,d-token context limit — consider /reset",
-                        pct, config.maxContextTokens()));
+                        pct, runtime.agent().maxContextTokens()));
             }
         }
     }
 
     private boolean contextLimitConfigured() {
-        Integer maxContext = config.maxContextTokens();
+        Integer maxContext = runtime.agent().maxContextTokens();
         return maxContext != null && maxContext > 0;
     }
 
     private int pctOfMax() {
-        return (int) Math.round(tracker.totalTokens() * 100.0 / config.maxContextTokens());
+        return (int) Math.round(tracker.totalTokens() * 100.0 / runtime.agent().maxContextTokens());
     }
 
     private boolean handleCommand(String line) {
@@ -395,7 +395,7 @@ public class ChatSession {
         StringBuilder report = new StringBuilder(tracker.usageReport());
         if (contextLimitConfigured()) {
             report.append(String.format(Locale.US, "%n  context limit: %,d configured (%d%% used)",
-                    config.maxContextTokens(), pctOfMax()));
+                    runtime.agent().maxContextTokens(), pctOfMax()));
         }
         report.append(String.format(Locale.US, "%n  history: %d messages", history.size()));
         if (toolBudget != null && !toolBudget.isUnlimited()) {

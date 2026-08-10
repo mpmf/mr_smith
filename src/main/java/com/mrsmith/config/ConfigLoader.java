@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public final class ConfigLoader {
@@ -37,7 +38,7 @@ public final class ConfigLoader {
             throw new ConfigException("Could not read config file " + configFile + ": " + e.getMessage());
         }
 
-        List<ProviderConfig> providers = parseProviders(root);
+        List<ProviderConfig> providers = parseProviders(root, env);
         List<AgentConfig> agents = parseAgents(root);
         String defaultAgent = root.hasNonNull("defaultAgent") ? root.get("defaultAgent").asText() : null;
         boolean includeUsage = !root.hasNonNull("includeUsage") || root.get("includeUsage").asBoolean();
@@ -70,18 +71,25 @@ public final class ConfigLoader {
         return Path.of(anchor).resolve(path);
     }
 
-    private static List<ProviderConfig> parseProviders(JsonNode root) {
+    private static List<ProviderConfig> parseProviders(JsonNode root, Map<String, String> env) {
         List<ProviderConfig> result = new ArrayList<>();
         JsonNode arr = root.path("providers");
         if (arr.isArray()) {
             for (JsonNode node : arr) {
-                result.add(new ProviderConfig(
-                        node.path("name").asText(),
-                        node.path("apiKey").asText(null),
-                        node.path("baseUrl").asText()));
+                String name = node.path("name").asText();
+                String apiKey = node.path("apiKey").asText(null);
+                String envKey = env.get("MRSMITH_" + normalizeEnvName(name) + "_API_KEY");
+                if (envKey != null && !envKey.isBlank()) {
+                    apiKey = envKey;
+                }
+                result.add(new ProviderConfig(name, apiKey, node.path("baseUrl").asText()));
             }
         }
         return result;
+    }
+
+    private static String normalizeEnvName(String name) {
+        return name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "_");
     }
 
     private static List<AgentConfig> parseAgents(JsonNode root) {

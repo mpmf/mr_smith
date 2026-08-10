@@ -147,7 +147,7 @@ class SubAgentRunnerTest {
         }
 
         @Override
-        public Provider create(com.mrsmith.config.AppConfig config) {
+        public Provider create(com.mrsmith.config.AgentRuntime runtime) {
             return provider;
         }
     }

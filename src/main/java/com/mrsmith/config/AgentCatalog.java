@@ -84,15 +84,13 @@ public class AgentCatalog {
         this.globalSkillsDir = globalSkillsDir;
     }
 
-    public AppConfig resolve(String agentName) {
+    public AgentRuntime resolve(String agentName) {
         AgentConfig agent = agents.get(agentName);
         if (agent == null) {
             throw new ConfigException("Unknown agent: " + agentName);
         }
         ProviderConfig provider = providers.get(agent.provider());
-        return new AppConfig(provider.apiKey(), provider.baseUrl(), agent.model(),
-                agent.systemPrompt(), agent.maxContextTokens(), includeUsage, sessionsDir, agent.tools(),
-                agent.maxToolRounds(), agent.maxToolCallsPerSession());
+        return new AgentRuntime(agent, provider, new AgentRuntime.Globals(includeUsage));
     }
 
     public String defaultName() {

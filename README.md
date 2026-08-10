@@ -102,7 +102,7 @@ provider with a model, system prompt, context limit, and tool allowlist.
 | Field | Meaning |
 |---|---|
 | `providers[].name` | Unique provider name |
-| `providers[].apiKey` | API key (required) |
+| `providers[].apiKey` | API key (required unless `MRSMITH_<PROVIDER>_API_KEY` is set) |
 | `providers[].baseUrl` | Endpoint base URL, e.g. `https://api.openai.com/v1` (required) |
 | `agents[].name` | Unique agent name |
 | `agents[].provider` | Provider this agent uses |
@@ -121,7 +121,11 @@ provider with a model, system prompt, context limit, and tool allowlist.
 ### Precedence
 
 CLI flags (`--agent`, `--sessions-dir`) > environment variable
-(`MRSMITH_SESSIONS_DIR`) > config file > defaults.
+(`MRSMITH_SESSIONS_DIR`) > config file > defaults. Provider API keys are
+read from `MRSMITH_<PROVIDER>_API_KEY` (provider name uppercased, dashes →
+underscores), which overrides the `providers[].apiKey` file value — so keys
+can be kept out of the config file. Provider names that differ only in
+separators (e.g. `my-provider` vs `my_provider`) map to the same env var.
 
 ---
 

@@ -3,7 +3,7 @@ package com.mrsmith.provider;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.mrsmith.config.AppConfig;
+import com.mrsmith.config.AgentRuntime;
 import com.mrsmith.tool.Tool;
 import com.mrsmith.util.Json;
 
@@ -23,20 +23,20 @@ public class OpenAiCompatibleProvider implements Provider {
 
     private static final ObjectMapper JSON = Json.MAPPER;
 
-    private final AppConfig config;
+    private final AgentRuntime runtime;
     private final HttpClient httpClient;
     private final long retryDelayMillis;
 
-    public OpenAiCompatibleProvider(AppConfig config) {
-        this(config, HttpClient.newHttpClient(), 2000L);
+    public OpenAiCompatibleProvider(AgentRuntime runtime) {
+        this(runtime, HttpClient.newHttpClient(), 2000L);
     }
 
-    OpenAiCompatibleProvider(AppConfig config, HttpClient httpClient) {
-        this(config, httpClient, 2000L);
+    OpenAiCompatibleProvider(AgentRuntime runtime, HttpClient httpClient) {
+        this(runtime, httpClient, 2000L);
     }
 
-    OpenAiCompatibleProvider(AppConfig config, HttpClient httpClient, long retryDelayMillis) {
-        this.config = config;
+    OpenAiCompatibleProvider(AgentRuntime runtime, HttpClient httpClient, long retryDelayMillis) {
+        this.runtime = runtime;
         this.httpClient = httpClient;
         this.retryDelayMillis = retryDelayMillis;
     }
@@ -51,7 +51,7 @@ public class OpenAiCompatibleProvider implements Provider {
         } catch (IOException | InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new ProviderException("Network error while contacting "
-                    + config.baseUrl() + ": " + e.getMessage(), e);
+                    + runtime.provider().baseUrl() + ": " + e.getMessage(), e);
         }
     }
 
@@ -134,9 +134,9 @@ public class OpenAiCompatibleProvider implements Provider {
 
     private String buildRequestBody(List<ChatMessage> context, List<Tool> tools) {
         ObjectNode root = JSON.createObjectNode();
-        root.put("model", config.model());
+        root.put("model", runtime.agent().model());
         root.put("stream", true);
-        if (config.includeUsage()) {
+        if (runtime.globals().includeUsage()) {
             root.putObject("stream_options").put("include_usage", true);
         }
         if (tools != null && !tools.isEmpty()) {
@@ -192,8 +192,8 @@ public class OpenAiCompatibleProvider implements Provider {
 
     private HttpRequest buildRequest(String body) {
         return HttpRequest.newBuilder()
-                .uri(URI.create(config.baseUrl() + "/chat/completions"))
-                .header("Authorization", "Bearer " + config.apiKey())
+                .uri(URI.create(runtime.provider().baseUrl() + "/chat/completions"))
+                .header("Authorization", "Bearer " + runtime.provider().apiKey())
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();

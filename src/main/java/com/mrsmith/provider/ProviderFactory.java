@@ -1,8 +1,8 @@
 package com.mrsmith.provider;
 
-import com.mrsmith.config.AppConfig;
+import com.mrsmith.config.AgentRuntime;
 
 public interface ProviderFactory {
 
-    Provider create(AppConfig config);
+    Provider create(AgentRuntime runtime);
 }

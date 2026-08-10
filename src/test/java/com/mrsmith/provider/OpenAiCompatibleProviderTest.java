@@ -2,7 +2,9 @@ package com.mrsmith.provider;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.mrsmith.config.AppConfig;
+import com.mrsmith.config.AgentConfig;
+import com.mrsmith.config.AgentRuntime;
+import com.mrsmith.config.ProviderConfig;
 import com.mrsmith.tool.Tool;
 import com.mrsmith.tool.ToolResult;
 import okhttp3.mockwebserver.MockResponse;
@@ -33,8 +35,11 @@ class OpenAiCompatibleProviderTest {
     void setUp() throws IOException {
         server = new MockWebServer();
         server.start();
-        AppConfig config = new AppConfig("sk-test", server.url("/").toString(), "test-model", null);
-        provider = new OpenAiCompatibleProvider(config, HttpClient.newHttpClient(), 0L);
+        AgentRuntime runtime = new AgentRuntime(
+                new AgentConfig("a", "p", "test-model", null, null),
+                new ProviderConfig("p", "sk-test", server.url("/").toString()),
+                new AgentRuntime.Globals(true));
+        provider = new OpenAiCompatibleProvider(runtime, HttpClient.newHttpClient(), 0L);
     }
 
     @AfterEach
@@ -212,8 +217,11 @@ class OpenAiCompatibleProviderTest {
         server.shutdown();
         server = new MockWebServer();
         server.start();
-        AppConfig config = new AppConfig("sk-test", server.url("/").toString(), "test-model", null, null, false);
-        provider = new OpenAiCompatibleProvider(config, HttpClient.newHttpClient(), 0L);
+        AgentRuntime runtime = new AgentRuntime(
+                new AgentConfig("a", "p", "test-model", null, null),
+                new ProviderConfig("p", "sk-test", server.url("/").toString()),
+                new AgentRuntime.Globals(false));
+        provider = new OpenAiCompatibleProvider(runtime, HttpClient.newHttpClient(), 0L);
         server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));
         provider.send(List.of(new ChatMessage(Role.USER, "hello")), List.of(), s -> { }, s -> { });
         RecordedRequest request = server.takeRequest();

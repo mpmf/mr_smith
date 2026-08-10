@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mrsmith.config.AgentCatalog;
 import com.mrsmith.config.AgentConfig;
-import com.mrsmith.config.AppConfig;
+import com.mrsmith.config.AgentRuntime;
 import com.mrsmith.config.ProviderConfig;
 import com.mrsmith.io.IO;
 import com.mrsmith.provider.ChatMessage;
@@ -1043,7 +1043,7 @@ class ChatSessionTest {
         }
 
         @Override
-        public Provider create(AppConfig config) {
+        public Provider create(AgentRuntime runtime) {
             calls++;
             return provider;
         }

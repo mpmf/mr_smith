@@ -1,10 +1,10 @@
 package com.mrsmith.tool;
 
-import com.mrsmith.config.AppConfig;
+import com.mrsmith.config.AgentRuntime;
 import com.mrsmith.io.IO;
 import com.mrsmith.skill.SkillCatalog;
 
 public interface ToolRegistryFactory {
 
-    ToolRegistry create(AppConfig config, SkillCatalog catalog, IO io, TaskRunner taskRunner);
+    ToolRegistry create(AgentRuntime runtime, SkillCatalog catalog, IO io, TaskRunner taskRunner);
 }
