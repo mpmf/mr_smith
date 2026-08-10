@@ -242,7 +242,7 @@ In `src/main/java/com/mrsmith/chat/ToolLoop.java`:
 
 ```java
     private static ConfirmDecision confirm(ToolCall call, Tool tool, IO io) {
-        io.writePrompt("Run " + tool.name() + "(" + describe(call) + ") [y/N/a]? ");
+        io.writePrompt("Run " + tool.name() + "(" + describe(call) + ") [y/N/a=always]? ");
         String answer;
         try {
             answer = io.readLine();
@@ -434,7 +434,7 @@ git commit -m "feat: share always-allow tool approvals across the session and su
 
 In `docs/superpowers/specs/2026-08-03-tool-calling-design.md`, update the **Approval** paragraph (currently `[y/N]`, "anything but `y`/`yes` ... is a decline"):
 
-1. Change the prompt text to `Run <name>(<args>) [y/N/a]?`.
+1. Change the prompt text to `Run <name>(<args>) [y/N/a=always]?`.
 2. Add: `a`/`always` (case-insensitive) approves and remembers the tool name for the rest of the session; approved tools skip the prompt until `/reset` or an agent switch clears them.
 
 - [ ] **Step 2: README**

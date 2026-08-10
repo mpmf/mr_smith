@@ -495,6 +495,24 @@ class ChatSessionTest {
                 catalog(), new FakeProviderFactory(toolProvider), registryFactory, emptySkills(), "a");
         session.run();
         assertEquals(9, shell.calls);
+        List<String> promptLines = io.lines.stream().filter(l -> l.startsWith("Run shell(")).toList();
+        assertEquals(1, promptLines.size());
+        assertTrue(promptLines.get(0).contains("[y/N/a=always]"));
+        assertFalse(io.lines.stream().anyMatch(l -> l.contains("declined")));
+    }
+
+    @Test
+    void alwaysAllowAcceptsCaseInsensitiveFullWord() throws Exception {
+        FakeTool shell = new FakeTool("shell", false, new ToolResult("ran", false));
+        ToolRegistryFactory registryFactory = (config, catalog, io, taskRunner) -> new ToolRegistry(List.of(shell));
+        FakeToolProvider toolProvider = new FakeToolProvider();
+        toolProvider.alwaysCall("shell", JSON.readTree("{\"command\":\"ls\"}"));
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "ALWAYS", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, emptySkills(), "a");
+        session.run();
+        assertEquals(9, shell.calls);
         long prompts = io.lines.stream().filter(l -> l.startsWith("Run shell(")).count();
         assertEquals(1, prompts);
         assertFalse(io.lines.stream().anyMatch(l -> l.contains("declined")));
@@ -514,6 +532,23 @@ class ChatSessionTest {
         assertEquals(2, shell.calls);
         long prompts = io.lines.stream().filter(l -> l.startsWith("Run shell(")).count();
         assertEquals(2, prompts);
+    }
+
+    @Test
+    void alwaysAllowsToolAcrossTurnsWithoutReprompting() throws Exception {
+        FakeTool shell = new FakeTool("shell", false, new ToolResult("ran", false));
+        ToolRegistryFactory registryFactory = (config, catalog, io, taskRunner) -> new ToolRegistry(List.of(shell));
+        AlternatingToolProvider provider = new AlternatingToolProvider(
+                new ToolCall("c1", "shell", JSON.readTree("{\"command\":\"ls\"}")));
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("first", "a", "second", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(provider), registryFactory, emptySkills(), "a");
+        session.run();
+        assertEquals(2, shell.calls);
+        long prompts = io.lines.stream().filter(l -> l.startsWith("Run shell(")).count();
+        assertEquals(1, prompts);
+        assertFalse(io.lines.stream().anyMatch(l -> l.contains("declined")));
     }
 
     @Test
