@@ -87,13 +87,12 @@ public final class WebFetchTool implements Tool {
     }
 
     private ToolResult fetch(URI uri, Set<String> approvedHosts, int redirects) {
-        String host = uri.getHost();
-        String cacheKey = host.toLowerCase(Locale.ROOT);
-        if (isPrivateHost(host) && !approvedHosts.contains(cacheKey) && !userApproves(uri)) {
+        String host = normalizeHost(uri.getHost());
+        if (isPrivateHost(host) && !approvedHosts.contains(host) && !userApproves(uri)) {
             return new ToolResult("User did not approve fetching " + uri
                     + " (private/link-local/localhost host).", true);
         }
-        approvedHosts.add(cacheKey);
+        approvedHosts.add(host);
         HttpRequest request;
         try {
             request = HttpRequest.newBuilder(uri)
@@ -177,7 +176,7 @@ public final class WebFetchTool implements Tool {
     }
 
     static boolean isPrivateHost(String host) {
-        String h = host.toLowerCase(Locale.ROOT);
+        String h = normalizeHost(host);
         if (h.equals("localhost") || h.endsWith(".localhost")) {
             return true;
         }
@@ -192,6 +191,18 @@ public final class WebFetchTool implements Tool {
         } catch (UnknownHostException e) {
             return false;
         }
+    }
+
+    private static String normalizeHost(String host) {
+        String h = host.toLowerCase(Locale.ROOT);
+        if (h.endsWith(".")) {
+            h = h.substring(0, h.length() - 1);
+        }
+        int zone = h.indexOf('%');
+        if (zone >= 0) {
+            h = h.substring(0, zone);
+        }
+        return h;
     }
 
     private static boolean isUniqueLocalAddress(InetAddress address) {
