@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.mrsmith.config.AppConfig;
 import com.mrsmith.tool.Tool;
+import com.mrsmith.util.Json;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -20,7 +21,7 @@ import java.util.function.Consumer;
 
 public class OpenAiCompatibleProvider implements Provider {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     private final AppConfig config;
     private final HttpClient httpClient;

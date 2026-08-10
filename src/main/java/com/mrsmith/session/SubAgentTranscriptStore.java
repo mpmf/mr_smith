@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mrsmith.provider.ChatMessage;
 import com.mrsmith.provider.Role;
 import com.mrsmith.provider.ToolCall;
+import com.mrsmith.util.Json;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -16,7 +17,7 @@ import java.util.function.Supplier;
 
 public final class SubAgentTranscriptStore {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     private final Path sessionsRoot;
     private final Supplier<UUID> sessionId;
