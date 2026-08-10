@@ -113,6 +113,8 @@ provider with a model, system prompt, context limit, and tool allowlist.
 | `agents[].maxToolRounds` | Max tool-call rounds per turn (optional, default 32) |
 | `agents[].maxToolCallsPerSession` | Max executed tool calls per session, shared with sub-agents (optional; unlimited by default). Warns at 80% and stops the loop with a graceful message when exhausted |
 | `agents[].tools` | Allowlist of built-in tools (optional; `edit`, `todowrite`, `question`, `skill`, `task` are always available) |
+| `agents[].shellHarmlessCommands` | Command specs promoted to read-only on top of the built-in defaults (e.g. `"kubectl get"`); one token (`"ps"`) allows the whole binary, two tokens allow that subcommand only |
+| `agents[].shellDangerousCommands` | Command specs forced to require approval, taking precedence over the safe lists (e.g. `"mydeploy --push"`) |
 | `defaultAgent` | Agent used at startup (required, must match an agent) |
 | `includeUsage` | Send `stream_options.include_usage` for real token counts (default `true`; set `false` if your provider rejects it with a 400) |
 | `sessionsDir` | Where session transcripts are stored (default `~/.config/mrsmith/sessions`) |
@@ -165,13 +167,13 @@ Anything else is sent to the LLM. Unknown `/` commands are rejected with a hint.
 
 The model can call tools during a turn; results are fed back so it can iterate
 until it produces a final answer. **Read-only tools run automatically; anything
-that modifies the filesystem prompts for confirmation** (`y/N`).
+that modifies the filesystem prompts for confirmation** (`y/N`, or `a` to always allow). The `shell` tool further classifies each command: read-only commands run automatically, while filesystem-modifying or unknown commands prompt.
 
 ### Per-agent built-ins (opt-in via `agents[].tools`)
 
 | Tool | Read-only | Description |
 |---|---|---|
-| `shell` | no | Runs `bash -c <command>` in the CWD; returns stdout, stderr, exit code (30s timeout) |
+| `shell` | no | Runs `bash -c <command>` in the CWD; returns stdout, stderr, exit code (30s timeout). Read-only commands (`ls`, `cat`, `git status`, ...) run automatically; commands that modify the filesystem or unknown commands require approval. The `a`/`always` option is per-command (e.g. `git commit`) |
 | `read_file` | yes | Reads a file (capped at 1 MiB) |
 | `write_file` | no | Writes a file relative to the CWD, creating parent directories |
 | `list_dir` | yes | Lists directory entries |
