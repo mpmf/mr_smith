@@ -142,9 +142,9 @@ public class ChatSession {
     private void applyAgent() {
         config = agents.resolve(currentAgentName);
         provider = providerFactory.create(config);
-        subAgentRunner = new SubAgentRunner(agents, providerFactory,
-                cfg -> ToolRegistry.with(cfg.tools(), skills, io, null),
-                io, tracker, () -> config, () -> currentSessionId, () -> toolBudget);
+        subAgentRunner = new SubAgentRunner(new SubAgentRunner.Context(
+                agents, providerFactory, toolRegistryFactory, skills, io, tracker,
+                () -> config, () -> currentSessionId, () -> toolBudget));
         toolRegistry = toolRegistryFactory.create(config, skills, io, subAgentRunner);
     }
 

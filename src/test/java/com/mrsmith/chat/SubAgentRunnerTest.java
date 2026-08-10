@@ -13,9 +13,11 @@ import com.mrsmith.provider.ProviderResponse;
 import com.mrsmith.provider.Role;
 import com.mrsmith.provider.ToolCall;
 import com.mrsmith.provider.Usage;
+import com.mrsmith.skill.SkillCatalog;
 import com.mrsmith.tool.TaskResult;
 import com.mrsmith.tool.Tool;
 import com.mrsmith.tool.ToolRegistry;
+import com.mrsmith.tool.ToolRegistryFactory;
 import com.mrsmith.tool.ToolResult;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -50,13 +52,22 @@ class SubAgentRunnerTest {
                 "a", true, tempDir);
     }
 
+    private SkillCatalog emptySkills() {
+        return SkillCatalog.discover(tempDir.resolve("nope-project"), tempDir.resolve("nope-global"));
+    }
+
+    private ToolRegistryFactory fixedRegistry(ToolRegistry tools) {
+        return (config, catalog, io, taskRunner) -> tools;
+    }
+
     private SubAgentRunner runner(Provider provider, ToolRegistry tools, IO io) throws IOException {
         Files.createDirectories(tempDir.resolve(sessionId.toString()));
         AgentCatalog catalog = catalog();
         ProviderFactory factory = new FakeProviderFactory(provider);
         UsageTracker tracker = new UsageTracker();
-        return new SubAgentRunner(catalog, factory, cfg -> tools, io, tracker,
-                () -> catalog.resolve("a"), () -> sessionId, () -> new ToolBudget(null, io));
+        return new SubAgentRunner(new SubAgentRunner.Context(catalog, factory, fixedRegistry(tools),
+                emptySkills(), io, tracker, () -> catalog.resolve("a"), () -> sessionId,
+                () -> new ToolBudget(null, io)));
     }
 
     private List<String> readSubAgentFile(int n) throws IOException {
@@ -304,9 +315,11 @@ class SubAgentRunnerTest {
         UsageTracker tracker = new UsageTracker();
         Files.createDirectories(tempDir.resolve(sessionId.toString()));
         AgentCatalog catalog = catalog();
-        SubAgentRunner runner = new SubAgentRunner(catalog, new FakeProviderFactory(new FakeProvider()),
-                cfg -> new ToolRegistry(List.of()), new StubIo(List.of()), tracker,
-                () -> catalog.resolve("a"), () -> sessionId, () -> new ToolBudget(null, new StubIo(List.of())));
+        SubAgentRunner runner = new SubAgentRunner(new SubAgentRunner.Context(catalog,
+                new FakeProviderFactory(new FakeProvider()), fixedRegistry(new ToolRegistry(List.of())),
+                emptySkills(), new StubIo(List.of()), tracker,
+                () -> catalog.resolve("a"), () -> sessionId,
+                () -> new ToolBudget(null, new StubIo(List.of()))));
         runner.run("x", null, null);
         assertEquals(10, tracker.promptTokens());
         assertEquals(5, tracker.completionTokens());
@@ -316,9 +329,11 @@ class SubAgentRunnerTest {
     @Test
     void runsWithoutTranscriptWhenSessionIdIsNull() throws Exception {
         AgentCatalog catalog = catalog();
-        SubAgentRunner runner = new SubAgentRunner(catalog, new FakeProviderFactory(new FakeProvider()),
-                cfg -> new ToolRegistry(List.of()), new StubIo(List.of()), new UsageTracker(),
-                () -> catalog.resolve("a"), () -> null, () -> new ToolBudget(null, new StubIo(List.of())));
+        SubAgentRunner runner = new SubAgentRunner(new SubAgentRunner.Context(catalog,
+                new FakeProviderFactory(new FakeProvider()), fixedRegistry(new ToolRegistry(List.of())),
+                emptySkills(), new StubIo(List.of()), new UsageTracker(),
+                () -> catalog.resolve("a"), () -> null,
+                () -> new ToolBudget(null, new StubIo(List.of()))));
         TaskResult result = runner.run("x", null, null);
         assertFalse(result.error());
         assertEquals("subagent-1", result.id());
@@ -333,9 +348,10 @@ class SubAgentRunnerTest {
         ToolBudget budget = new ToolBudget(3, io);
         Files.createDirectories(tempDir.resolve(sessionId.toString()));
         AgentCatalog catalog = catalog();
-        SubAgentRunner runner = new SubAgentRunner(catalog, new FakeProviderFactory(provider),
-                cfg -> tools, io, new UsageTracker(), () -> catalog.resolve("a"), () -> sessionId,
-                () -> budget);
+        SubAgentRunner runner = new SubAgentRunner(new SubAgentRunner.Context(catalog,
+                new FakeProviderFactory(provider), fixedRegistry(tools),
+                emptySkills(), io, new UsageTracker(), () -> catalog.resolve("a"), () -> sessionId,
+                () -> budget));
         TaskResult result = runner.run("do it", null, null);
         assertFalse(result.error());
         assertEquals(3, readFile.calls);
@@ -360,9 +376,10 @@ class SubAgentRunnerTest {
                 new ToolCall("c6", "read_file", JSON.readTree("{}")));
         StubIo io = new StubIo(List.of("y", "n"));
         Files.createDirectories(tempDir.resolve(sessionId.toString()));
-        SubAgentRunner runner = new SubAgentRunner(catalog, new FakeProviderFactory(provider),
-                cfg -> tools, io, new UsageTracker(), () -> catalog.resolve("a"), () -> sessionId,
-                () -> new ToolBudget(null, io));
+        SubAgentRunner runner = new SubAgentRunner(new SubAgentRunner.Context(catalog,
+                new FakeProviderFactory(provider), fixedRegistry(tools),
+                emptySkills(), io, new UsageTracker(), () -> catalog.resolve("a"), () -> sessionId,
+                () -> new ToolBudget(null, io)));
         TaskResult result = runner.run("do it", null, null);
         assertFalse(result.error());
         assertEquals(5, readFile.calls);
