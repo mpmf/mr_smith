@@ -552,6 +552,22 @@ class ChatSessionTest {
     }
 
     @Test
+    void alwaysAllowRecordsAllApprovalKeys() throws Exception {
+        MultiKeyTool tool = new MultiKeyTool();
+        ToolRegistryFactory registryFactory = (config, catalog, io, taskRunner) -> new ToolRegistry(List.of(tool));
+        FakeToolProvider toolProvider = new FakeToolProvider();
+        toolProvider.alwaysCall("multi", JSON.readTree("{}"));
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "a", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, emptySkills(), "a");
+        session.run();
+        assertEquals(9, tool.calls);
+        long prompts = io.lines.stream().filter(l -> l.startsWith("Run multi(")).count();
+        assertEquals(1, prompts);
+    }
+
+    @Test
     void unknownToolProducesErrorResult() throws Exception {
         ToolRegistryFactory registryFactory = (config, catalog, io, taskRunner) -> new ToolRegistry(List.of());
         FakeToolProvider toolProvider = new FakeToolProvider(
@@ -1276,6 +1292,17 @@ class ChatSessionTest {
         public ToolResult execute(JsonNode args) {
             calls++;
             return result;
+        }
+    }
+
+    static class MultiKeyTool extends FakeTool {
+        MultiKeyTool() {
+            super("multi", false, new ToolResult("ran", false));
+        }
+
+        @Override
+        public Tool.ApprovalCheck approvalCheck(JsonNode args) {
+            return new Tool.ApprovalCheck(List.of("k1", "k2"), "dangerous command");
         }
     }
 

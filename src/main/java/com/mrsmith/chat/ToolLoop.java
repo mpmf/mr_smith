@@ -114,14 +114,16 @@ public final class ToolLoop {
             return new ToolResult("Unknown tool: " + call.name(), true);
         }
         Tool tool = found.get();
-        if (!tool.isReadOnly()) {
-            if (!approval.isAlwaysAllowed(tool.name())) {
-                ConfirmDecision decision = confirm(call, tool, io);
+        Tool.ApprovalCheck check = tool.approvalCheck(call.arguments());
+        if (check != null) {
+            boolean allAllowed = check.keys().stream().allMatch(approval::isAlwaysAllowed);
+            if (!allAllowed) {
+                ConfirmDecision decision = confirm(call, tool, check, io);
                 if (decision == ConfirmDecision.DECLINE) {
                     return new ToolResult("User declined to run " + call.name() + ".", true);
                 }
                 if (decision == ConfirmDecision.ALWAYS_ALLOW) {
-                    approval.allowAlways(tool.name());
+                    check.keys().forEach(approval::allowAlways);
                 }
             }
         }
@@ -141,8 +143,9 @@ public final class ToolLoop {
         return Optional.empty();
     }
 
-    private static ConfirmDecision confirm(ToolCall call, Tool tool, IO io) {
-        io.writePrompt("Run " + tool.name() + "(" + describe(call) + ") [y/N/a=always]? ");
+    private static ConfirmDecision confirm(ToolCall call, Tool tool, Tool.ApprovalCheck check, IO io) {
+        String suffix = check.reason() != null ? " (" + check.reason() + ")" : "";
+        io.writePrompt("Run " + tool.name() + "(" + describe(call) + ")" + suffix + " [y/N/a=always]? ");
         String answer;
         try {
             answer = io.readLine();
