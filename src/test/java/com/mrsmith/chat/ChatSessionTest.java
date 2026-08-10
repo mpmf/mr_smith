@@ -580,6 +580,19 @@ class ChatSessionTest {
     }
 
     @Test
+    void skillsListMarksLoadedSkills() throws Exception {
+        SkillCatalog skills = skillsCatalog("coding", "Write Java.");
+        ToolRegistryFactory registryFactory = (config, catalog, io, taskRunner) -> ToolRegistry.with(List.of(), catalog, io, taskRunner);
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("/skills coding", "/skills", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(provider), registryFactory, skills, "a");
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("coding*") && l.contains("Write Java.")));
+    }
+
+    @Test
     void skillsCommandLoadsSkill() throws Exception {
         SkillCatalog skills = skillsCatalog("coding", "Write Java.");
         ToolRegistryFactory registryFactory = (config, catalog, io, taskRunner) -> ToolRegistry.with(List.of(), catalog, io, taskRunner);
