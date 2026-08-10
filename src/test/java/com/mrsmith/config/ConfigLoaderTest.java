@@ -339,6 +339,26 @@ class ConfigLoaderTest {
     }
 
     @Test
+    void shellCommandConfigListsIgnoreMalformedEntries() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "p", "apiKey": "sk-x", "baseUrl": "https://example.com/v1" } ],
+                  "agents": [
+                    {
+                      "name": "a", "provider": "p", "model": "m",
+                      "shellHarmlessCommands": "kubectl",
+                      "shellDangerousCommands": [null, 5, "ok"]
+                    }
+                  ],
+                  "defaultAgent": "a"
+                }
+                """);
+        AgentRuntime runtime = ConfigLoader.load(file, CliConfig.empty(), Map.of()).resolve("a");
+        assertTrue(runtime.agent().shellHarmlessCommands().isEmpty());
+        assertEquals(List.of("ok"), runtime.agent().shellDangerousCommands());
+    }
+
+    @Test
     void shellCommandConfigListsDefaultToEmpty() throws IOException {
         Path file = writeConfig("""
                 {

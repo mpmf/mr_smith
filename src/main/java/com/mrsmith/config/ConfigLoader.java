@@ -129,7 +129,9 @@ public final class ConfigLoader {
         JsonNode arr = node.path(field);
         if (arr.isArray()) {
             for (JsonNode item : arr) {
-                result.add(item.asText());
+                if (item != null && item.isTextual() && !item.asText().isBlank()) {
+                    result.add(item.asText());
+                }
             }
         }
         return result;
