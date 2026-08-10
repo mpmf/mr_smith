@@ -76,25 +76,33 @@ public final class ShellCommandClassifier {
    operators `;`, `&&`, `||`, `|`, `&`, and newline. Every segment is
    classified; a single non-SAFE segment makes the whole command require
    approval.
-3. **Per-segment verdict** — for each segment's leading binary:
-   - in the config **dangerous** list → DANGEROUS (takes precedence over
-     everything).
-   - in the config **harmless** list → SAFE.
-   - in the built-in **safe** set → SAFE (`ls`, `cat`, `pwd`, `echo`, `printf`,
-     `head`, `tail`, `wc`, `grep`, `find`, `diff`, `sort`, `uniq`, `cut`, `tr`,
-     `file`, `stat`, `du`, `df`, `which`, `readlink`, `basename`, `dirname`,
-     `date`, `cal`, `whoami`, `uname`, `hostname`, `env`, `printenv`, `id`,
-     `tree`, plus shell builtins `cd`, `export`, `set`, `unset`).
+3. **Per-segment verdict** — for each segment's leading binary, in precedence
+   order:
+   - in the **dangerous** lists — the config `shellDangerousCommands` and the
+     built-in dangerous set (`rm`, `rmdir`, `mv`, `cp`, `touch`, `mkdir`,
+     `chmod`, `chown`, `ln`, `dd`, `tee`, `sed`, `truncate`, `install`,
+     `patch`, `shred`, `unlink`, `mount`, `umount`) → DANGEROUS. A two-token
+     config-dangerous entry applies only to that binary+subcommand (e.g.
+     `mydeploy --push`); other subcommands of that binary are UNKNOWN.
    - a **subcommand-aware** binary (built-in `git`, or any binary with at
      least one harmless subcommand entry from config) → SAFE only if the second
      word is a known harmless subcommand (`git status`, `git diff`, `git log`,
      `git show`, `git branch`, `git ls-files`, `git rev-parse`, `git remote`,
      `git tag`); any other subcommand (or a bare binary with no subcommand) →
      DANGEROUS.
-   - in the built-in **dangerous** set → DANGEROUS (`rm`, `rmdir`, `mv`, `cp`,
-     `touch`, `mkdir`, `chmod`, `chown`, `ln`, `dd`, `tee`, `sed`, `truncate`,
-     `install`, `patch`, `shred`, `unlink`, `mount`, `umount`).
+   - a **flag-aware** binary — `find` with `-delete`, `-exec`, `-execdir`,
+     `-ok`, or `-okdir`, and `sort` with `-o` → DANGEROUS; otherwise `find`
+     and `sort` stay SAFE.
+   - in the **safe** lists — the config `shellHarmlessCommands` and the
+     built-in safe set (`ls`, `cat`, `pwd`, `echo`, `printf`, `head`, `tail`,
+     `wc`, `grep`, `find`, `diff`, `sort`, `uniq`, `cut`, `tr`, `file`,
+     `stat`, `du`, `df`, `which`, `readlink`, `basename`, `dirname`, `date`,
+     `cal`, `whoami`, `uname`, `hostname`, `env`, `printenv`, `id`, `tree`,
+     plus shell builtins `cd`, `export`, `set`, `unset`) → SAFE.
    - anything else → UNKNOWN.
+
+   A harmless entry cannot override a dangerous one: the dangerous lists are
+   always evaluated first.
 4. **Aggregation** — the overall verdict is DANGEROUS if any segment is
    DANGEROUS (or redirection was seen), else UNKNOWN if any segment is UNKNOWN,
    else SAFE. DANGEROUS and UNKNOWN both require approval; the distinction is
@@ -103,7 +111,8 @@ public final class ShellCommandClassifier {
 **Always-allow key(s):**
 
 - **No redirection** — one key per non-SAFE segment: the binary name, plus the
-  subcommand when the binary is subcommand-aware. `git commit -m "x"` → key
+  subcommand when the binary is subcommand-aware, or the dangerous flag when a
+  flag-aware binary uses one (e.g. `find -delete`). `git commit -m "x"` → key
   `git commit`; `rm -rf target` → key `rm`; `mvn -q clean install` → key
   `mvn`; the chain `git add app.js && git commit -m wip` → keys `git add` and
   `git commit`.

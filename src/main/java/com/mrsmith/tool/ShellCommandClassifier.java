@@ -46,6 +46,10 @@ public final class ShellCommandClassifier {
             "git", Set.of("status", "diff", "log", "show", "branch", "ls-files",
                     "rev-parse", "remote", "tag"));
 
+    private static final Map<String, Set<String>> DANGEROUS_FLAGS = Map.of(
+            "find", Set.of("-delete", "-exec", "-execdir", "-ok", "-okdir"),
+            "sort", Set.of("-o"));
+
     private final Set<String> safeBinaries;
     private final Set<String> dangerousBinaries;
     private final Map<String, Set<String>> safeSubcommands;
@@ -100,17 +104,21 @@ public final class ShellCommandClassifier {
             String[] words = trimmed.split("\\s+");
             String binary = normalize(words[0]);
             String subcommand = words.length > 1 ? normalize(words[1]) : null;
+            String dangerousFlag = dangerousFlag(binary, words);
             Verdict v = classifySegment(binary, subcommand);
+            if (dangerousFlag != null) {
+                v = Verdict.DANGEROUS;
+            }
             if (v == Verdict.DANGEROUS) {
                 verdict = Verdict.DANGEROUS;
             } else if (v == Verdict.UNKNOWN && verdict == Verdict.SAFE) {
                 verdict = Verdict.UNKNOWN;
             }
             boolean aware = subcommandAware(binary);
-            redirectKey.append(canonical(binary, subcommand, aware, segment.redirect));
+            redirectKey.append(canonical(binary, subcommand, aware, segment.redirect, dangerousFlag));
             redirectKey.append(segment.separator);
             if (v != Verdict.SAFE) {
-                keys.add(canonical(binary, subcommand, aware, false));
+                keys.add(canonical(binary, subcommand, aware, false, dangerousFlag));
             }
         }
         if (parsed.redirection) {
@@ -136,20 +144,36 @@ public final class ShellCommandClassifier {
         if (safeBinaries.contains(binary)) {
             return Verdict.SAFE;
         }
-        if (dangerSubs != null || safeSubs != null) {
+        if (safeSubs != null) {
             return Verdict.DANGEROUS;
         }
         return Verdict.UNKNOWN;
+    }
+
+    private String dangerousFlag(String binary, String[] words) {
+        Set<String> flags = DANGEROUS_FLAGS.get(binary);
+        if (flags == null) {
+            return null;
+        }
+        for (int i = 1; i < words.length; i++) {
+            String word = normalize(words[i]);
+            if (flags.contains(word)) {
+                return word;
+            }
+        }
+        return null;
     }
 
     private boolean subcommandAware(String binary) {
         return safeSubcommands.containsKey(binary) || dangerousSubcommands.containsKey(binary);
     }
 
-    private String canonical(String binary, String subcommand, boolean aware, boolean redirect) {
+    private String canonical(String binary, String subcommand, boolean aware, boolean redirect, String dangerousFlag) {
         StringBuilder sb = new StringBuilder(binary);
         if (aware && subcommand != null) {
             sb.append(' ').append(subcommand);
+        } else if (dangerousFlag != null) {
+            sb.append(' ').append(dangerousFlag);
         }
         if (redirect) {
             sb.append(" >");

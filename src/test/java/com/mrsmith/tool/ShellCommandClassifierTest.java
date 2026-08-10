@@ -131,4 +131,45 @@ class ShellCommandClassifierTest {
                 new ShellConfig(List.of("kubectl get"), List.of("kubectl get")));
         assertTrue(configurable.classify("kubectl get pods").requiresApproval());
     }
+
+    @Test
+    void findWithDeleteFlagRequiresApproval() {
+        ShellCommandClassifier.Classification c = classifier.classify("find . -delete");
+        assertTrue(c.requiresApproval());
+        assertEquals(List.of("find -delete"), c.keys());
+    }
+
+    @Test
+    void findWithoutFlagsIsSafe() {
+        assertFalse(classifier.classify("find . -name '*.java'").requiresApproval());
+    }
+
+    @Test
+    void findExecRequiresApproval() {
+        ShellCommandClassifier.Classification c = classifier.classify("find . -exec rm {} \\;");
+        assertTrue(c.requiresApproval());
+        assertEquals(List.of("find -exec"), c.keys());
+    }
+
+    @Test
+    void sortWithOutputFlagRequiresApproval() {
+        ShellCommandClassifier.Classification c = classifier.classify("sort -o out.txt f");
+        assertTrue(c.requiresApproval());
+        assertEquals(List.of("sort -o"), c.keys());
+    }
+
+    @Test
+    void sortWithoutOutputFlagIsSafe() {
+        assertFalse(classifier.classify("sort f").requiresApproval());
+    }
+
+    @Test
+    void appendRedirectRequiresApproval() {
+        assertTrue(classifier.classify("echo hi >> log").requiresApproval());
+    }
+
+    @Test
+    void stderrRedirectRequiresApproval() {
+        assertTrue(classifier.classify("echo hi 2> err").requiresApproval());
+    }
 }
