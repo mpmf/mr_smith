@@ -67,7 +67,7 @@ class SubAgentRunnerTest {
         UsageTracker tracker = new UsageTracker();
         return new SubAgentRunner(new SubAgentRunner.Context(catalog, factory, fixedRegistry(tools),
                 emptySkills(), io, tracker, () -> catalog.resolve("a"), () -> sessionId,
-                () -> new ToolBudget(null, io)));
+                () -> new ToolBudget(null, io), () -> new ToolApproval()));
     }
 
     private List<String> readSubAgentFile(int n) throws IOException {
@@ -319,7 +319,7 @@ class SubAgentRunnerTest {
                 new FakeProviderFactory(new FakeProvider()), fixedRegistry(new ToolRegistry(List.of())),
                 emptySkills(), new StubIo(List.of()), tracker,
                 () -> catalog.resolve("a"), () -> sessionId,
-                () -> new ToolBudget(null, new StubIo(List.of()))));
+                () -> new ToolBudget(null, new StubIo(List.of())), () -> new ToolApproval()));
         runner.run("x", null, null);
         assertEquals(10, tracker.promptTokens());
         assertEquals(5, tracker.completionTokens());
@@ -333,7 +333,7 @@ class SubAgentRunnerTest {
                 new FakeProviderFactory(new FakeProvider()), fixedRegistry(new ToolRegistry(List.of())),
                 emptySkills(), new StubIo(List.of()), new UsageTracker(),
                 () -> catalog.resolve("a"), () -> null,
-                () -> new ToolBudget(null, new StubIo(List.of()))));
+                () -> new ToolBudget(null, new StubIo(List.of())), () -> new ToolApproval()));
         TaskResult result = runner.run("x", null, null);
         assertFalse(result.error());
         assertEquals("subagent-1", result.id());
@@ -351,7 +351,7 @@ class SubAgentRunnerTest {
         SubAgentRunner runner = new SubAgentRunner(new SubAgentRunner.Context(catalog,
                 new FakeProviderFactory(provider), fixedRegistry(tools),
                 emptySkills(), io, new UsageTracker(), () -> catalog.resolve("a"), () -> sessionId,
-                () -> budget));
+                () -> budget, () -> new ToolApproval()));
         TaskResult result = runner.run("do it", null, null);
         assertFalse(result.error());
         assertEquals(3, readFile.calls);
@@ -379,9 +379,30 @@ class SubAgentRunnerTest {
         SubAgentRunner runner = new SubAgentRunner(new SubAgentRunner.Context(catalog,
                 new FakeProviderFactory(provider), fixedRegistry(tools),
                 emptySkills(), io, new UsageTracker(), () -> catalog.resolve("a"), () -> sessionId,
-                () -> new ToolBudget(null, io)));
+                () -> new ToolBudget(null, io), () -> new ToolApproval()));
         TaskResult result = runner.run("do it", null, null);
         assertFalse(result.error());
         assertEquals(5, readFile.calls);
+    }
+
+    @Test
+    void subAgentSharesAlwaysAllowDecision() throws Exception {
+        FakeTool edit = new FakeTool("edit", false, new ToolResult("edited", false));
+        ToolRegistry tools = new ToolRegistry(List.of(edit));
+        FakeProvider provider = new FakeProvider(
+                new ToolCall("c1", "edit", JSON.readTree("{\"filePath\":\"a.txt\"}")));
+        ToolApproval approval = new ToolApproval();
+        approval.allowAlways("edit");
+        StubIo io = new StubIo(List.of());
+        Files.createDirectories(tempDir.resolve(sessionId.toString()));
+        AgentCatalog catalog = catalog();
+        SubAgentRunner runner = new SubAgentRunner(new SubAgentRunner.Context(catalog,
+                new FakeProviderFactory(provider), fixedRegistry(tools), emptySkills(), io,
+                new UsageTracker(), () -> catalog.resolve("a"), () -> sessionId,
+                () -> new ToolBudget(null, io), () -> approval));
+        TaskResult result = runner.run("edit it", null, null);
+        assertFalse(result.error());
+        assertEquals(1, edit.calls);
+        assertTrue(io.lines.stream().noneMatch(l -> l.contains("Run edit(")));
     }
 }

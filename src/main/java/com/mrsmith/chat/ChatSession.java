@@ -53,6 +53,7 @@ public class ChatSession {
     private ToolState toolState;
     private SubAgentRunner subAgentRunner;
     private ToolBudget toolBudget;
+    private ToolApproval toolApproval = new ToolApproval();
 
     public ChatSession(IO io, TranscriptWriter transcripts, ContextBuilder contextBuilder,
                        AgentCatalog agents, ProviderFactory providerFactory,
@@ -131,7 +132,7 @@ public class ChatSession {
                         contextBuilder.appendToolResult(id, content);
                         appendToolResult(id, content, error);
                     }
-                });
+                }, toolApproval);
         return new TurnResult(result.message(), result.usage(), result.estimated());
     }
 
@@ -145,7 +146,7 @@ public class ChatSession {
         provider = providerFactory.create(runtime);
         subAgentRunner = new SubAgentRunner(new SubAgentRunner.Context(
                 agents, providerFactory, toolRegistryFactory, skills, io, tracker,
-                () -> runtime, () -> currentSessionId, () -> toolBudget));
+                () -> runtime, () -> currentSessionId, () -> toolBudget, () -> toolApproval));
         toolRegistry = toolRegistryFactory.create(runtime, skills, io, subAgentRunner);
         toolState = toolRegistry;
     }
@@ -156,6 +157,7 @@ public class ChatSession {
         warned85 = false;
         warned100 = false;
         toolBudget = new ToolBudget(runtime.agent().maxToolCallsPerSession(), io);
+        toolApproval.reset();
         contextBuilder.start(composeSystemPrompt(runtime.agent().systemPrompt()));
         toolRegistry.resetSession();
         subAgentRunner.reset();
