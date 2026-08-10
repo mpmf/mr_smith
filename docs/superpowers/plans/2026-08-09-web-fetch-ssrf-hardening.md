@@ -268,9 +268,12 @@ class WebFetchToolTest {
         assertTrue(WebFetchTool.isPrivateHost("fe80::1"));
         assertTrue(WebFetchTool.isPrivateHost("fc00::1"));
         assertTrue(WebFetchTool.isPrivateHost("0.0.0.0"));
+        assertTrue(WebFetchTool.isPrivateHost("2130706433"));
+        assertTrue(WebFetchTool.isPrivateHost("3232235777"));
         assertFalse(WebFetchTool.isPrivateHost("example.com"));
         assertFalse(WebFetchTool.isPrivateHost("api.openai.com"));
         assertFalse(WebFetchTool.isPrivateHost("8.8.8.8"));
+        assertFalse(WebFetchTool.isPrivateHost("134744072"));
     }
 
     @Test
@@ -327,6 +330,18 @@ class WebFetchToolTest {
         assertTrue(result.error());
         assertTrue(result.content().contains("did not approve"));
         assertEquals(1, io.prompts.size());
+    }
+
+    @Test
+    void eofAtPromptDeclinesWithoutRequest() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200).setBody("secret"));
+        StubIo io = new StubIo(List.of());
+        WebFetchTool tool = tool(io);
+        ToolResult result = fetch(tool, server.url("/page").toString());
+        assertTrue(result.error());
+        assertTrue(result.content().contains("did not approve"));
+        assertEquals(1, io.prompts.size());
+        assertEquals(0, server.getRequestCount());
     }
 
     @Test
@@ -432,9 +447,12 @@ The classifier is the SSRF boundary, so pin it fully before implementing. In `sr
         assertTrue(WebFetchTool.isPrivateHost("fe80::1"));
         assertTrue(WebFetchTool.isPrivateHost("fc00::1"));
         assertTrue(WebFetchTool.isPrivateHost("0.0.0.0"));
+        assertTrue(WebFetchTool.isPrivateHost("2130706433"));
+        assertTrue(WebFetchTool.isPrivateHost("3232235777"));
         assertFalse(WebFetchTool.isPrivateHost("example.com"));
         assertFalse(WebFetchTool.isPrivateHost("api.openai.com"));
         assertFalse(WebFetchTool.isPrivateHost("8.8.8.8"));
+        assertFalse(WebFetchTool.isPrivateHost("134744072"));
     }
 ```
 
@@ -536,11 +554,12 @@ public final class WebFetchTool implements Tool {
 
     private ToolResult fetch(URI uri, Set<String> approvedHosts, int redirects) {
         String host = uri.getHost();
-        if (isPrivateHost(host) && !approvedHosts.contains(host) && !userApproves(uri)) {
+        String cacheKey = host.toLowerCase(Locale.ROOT);
+        if (isPrivateHost(host) && !approvedHosts.contains(cacheKey) && !userApproves(uri)) {
             return new ToolResult("User did not approve fetching " + uri
                     + " (private/link-local/localhost host).", true);
         }
-        approvedHosts.add(host);
+        approvedHosts.add(cacheKey);
         HttpRequest request;
         try {
             request = HttpRequest.newBuilder(uri)
@@ -557,6 +576,7 @@ public final class WebFetchTool implements Tool {
                 return handleRedirect(response, uri, approvedHosts, redirects);
             }
             if (response.statusCode() >= 400) {
+                close(response);
                 return new ToolResult("HTTP " + response.statusCode(), true);
             }
             try (InputStream body = response.body()) {
@@ -596,7 +616,8 @@ public final class WebFetchTool implements Tool {
         } catch (IllegalArgumentException e) {
             return new ToolResult("invalid redirect location: " + location, true);
         }
-        if (next.getHost() == null) {
+        String scheme = next.getScheme();
+        if (next.getHost() == null || (!"http".equals(scheme) && !"https".equals(scheme))) {
             return new ToolResult("invalid redirect location: " + location, true);
         }
         return fetch(next, approvedHosts, redirects + 1);
@@ -651,7 +672,7 @@ public final class WebFetchTool implements Tool {
         if (host.indexOf(':') >= 0) {
             return true;
         }
-        return host.matches("\\d+(\\.\\d+){3}");
+        return host.matches("\\d+(\\.\\d+){0,3}");
     }
 }
 ```

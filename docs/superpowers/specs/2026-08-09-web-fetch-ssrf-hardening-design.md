@@ -50,15 +50,19 @@ a redirect.
 URL's host (from `URI.getHost()`):
 
 1. Lowercase the host. `localhost` and any `*.localhost` host is private.
-2. If the host is an IP literal — IPv4 (`\d+(\.\d+){3}`) or IPv6 (contains `:`)
-   — resolve it with `InetAddress.getByName` (a pure parse for literals; **no
-   DNS lookup is performed**). Treat it as private when any of:
+2. If the host is an IP literal — IPv4 (`\d+(\.\d+){0,3}`, which covers
+   dotted-quad, classful short forms, and integer-form addresses like
+   `2130706433` = 127.0.0.1) or IPv6 (contains `:`) — resolve it with
+   `InetAddress.getByName` (a pure parse for literals; **no DNS lookup is
+   performed**). Treat it as private when any of:
    - `isLoopbackAddress()` — `127.0.0.0/8`, `::1`
    - `isAnyLocalAddress()` — `0.0.0.0`, `::`
    - `isLinkLocalAddress()` — `169.254.0.0/16` (incl. metadata IP
      `169.254.169.254`), `fe80::/10`
-   - `isSiteLocalAddress()` — `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`,
-     `fc00::/7`
+   - `isSiteLocalAddress()` — `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`
+   - `isUniqueLocalAddress` — an explicit `fc00::/7` (first byte `0xfc`/`0xfd`)
+     check, because the JDK's `isSiteLocalAddress()` only matches the deprecated
+     `fec0::/10` and misses IPv6 ULA
 3. Plain hostnames (not IP literals) are not classified as private.
 
 ### Approval flow
