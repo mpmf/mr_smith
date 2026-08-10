@@ -18,6 +18,7 @@ import com.mrsmith.tool.TodowriteTool;
 import com.mrsmith.tool.Tool;
 import com.mrsmith.tool.ToolRegistry;
 import com.mrsmith.tool.ToolRegistryFactory;
+import com.mrsmith.util.Warn;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -177,7 +178,7 @@ public class ChatSession {
             currentSessionId = id;
         } catch (IOException e) {
             currentSessionId = null;
-            System.err.println("Warning: could not create session folder for " + id
+            Warn.warn("could not create session folder for " + id
                     + ": " + e.getMessage() + ". Session transcript disabled.");
             return;
         }
@@ -273,7 +274,7 @@ public class ChatSession {
         try {
             transcripts.appendUser(currentSessionId, content);
         } catch (IOException e) {
-            System.err.println("Warning: could not write session transcript: " + e.getMessage());
+            Warn.warn("could not write session transcript: " + e.getMessage());
             currentSessionId = null;
         }
     }
@@ -285,7 +286,7 @@ public class ChatSession {
         try {
             transcripts.appendAssistant(currentSessionId, content, thinking, usage, estimated);
         } catch (IOException e) {
-            System.err.println("Warning: could not write session transcript: " + e.getMessage());
+            Warn.warn("could not write session transcript: " + e.getMessage());
             currentSessionId = null;
         }
     }
@@ -297,7 +298,7 @@ public class ChatSession {
         try {
             transcripts.appendToolCall(currentSessionId, call.id(), call.name(), call.arguments());
         } catch (IOException e) {
-            System.err.println("Warning: could not write session transcript: " + e.getMessage());
+            Warn.warn("could not write session transcript: " + e.getMessage());
             currentSessionId = null;
         }
     }
@@ -309,7 +310,7 @@ public class ChatSession {
         try {
             transcripts.appendToolResult(currentSessionId, id, content, error);
         } catch (IOException e) {
-            System.err.println("Warning: could not write session transcript: " + e.getMessage());
+            Warn.warn("could not write session transcript: " + e.getMessage());
             currentSessionId = null;
         }
     }
@@ -321,7 +322,7 @@ public class ChatSession {
         try {
             transcripts.appendSkillLoad(currentSessionId, name);
         } catch (IOException e) {
-            System.err.println("Warning: could not write session transcript: " + e.getMessage());
+            Warn.warn("could not write session transcript: " + e.getMessage());
             currentSessionId = null;
         }
     }

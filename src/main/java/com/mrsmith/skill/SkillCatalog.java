@@ -1,5 +1,7 @@
 package com.mrsmith.skill;
 
+import com.mrsmith.util.Warn;
+
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -89,7 +91,7 @@ public final class SkillCatalog {
     }
 
     private static void warn(String message) {
-        System.err.println("Warning: " + message);
+        Warn.warn(message);
     }
 
     public Set<String> names() {

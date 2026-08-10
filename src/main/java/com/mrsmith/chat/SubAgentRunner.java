@@ -14,6 +14,7 @@ import com.mrsmith.tool.Resettable;
 import com.mrsmith.tool.TaskResult;
 import com.mrsmith.tool.TaskRunner;
 import com.mrsmith.tool.ToolRegistry;
+import com.mrsmith.util.Warn;
 
 import java.io.IOException;
 import java.util.List;
@@ -141,7 +142,7 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
                             transcripts.appendToolCall(sidForWrites(), call.id(), call.name(), call.arguments());
                         }
                     } catch (IOException e) {
-                        System.err.println("Warning: could not write subagent transcript: " + e.getMessage());
+                        Warn.warn("could not write subagent transcript: " + e.getMessage());
                     }
                 }
             }
@@ -153,7 +154,7 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
                     try {
                         transcripts.appendToolResult(sidForWrites(), id, content, error);
                     } catch (IOException e) {
-                        System.err.println("Warning: could not write subagent transcript: " + e.getMessage());
+                        Warn.warn("could not write subagent transcript: " + e.getMessage());
                     }
                 }
             }
