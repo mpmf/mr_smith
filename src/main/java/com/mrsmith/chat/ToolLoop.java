@@ -33,14 +33,14 @@ public final class ToolLoop {
 
     public static LoopResult run(ContextBuilder context, Provider provider, List<Tool> tools,
                                  IO io, int maxToolRounds, ToolBudget budget, Sink sink) {
-        Accumulator acc = new Accumulator();
+        UsageAccumulator acc = new UsageAccumulator();
         for (int round = 0; ; round++) {
             ProviderResponse response = provider.send(context.messages(), tools, io::write, io::writeReasoning);
-            accumulate(acc, response);
+            acc.add(response.usage(), response.usageEstimated());
             ChatMessage message = response.message();
             List<ToolCall> calls = message.toolCalls();
             if (calls == null || calls.isEmpty()) {
-                return new LoopResult(message, new Usage(acc.prompt, acc.completion), acc.estimated);
+                return new LoopResult(message, acc.snapshot(), acc.estimated());
             }
             sink.assistantWithToolCalls(message, calls);
             if (round >= maxToolRounds) {
@@ -76,11 +76,11 @@ public final class ToolLoop {
         }
     }
 
-    private static LoopResult finalAnswer(Accumulator acc, ContextBuilder context, Provider provider,
+    private static LoopResult finalAnswer(UsageAccumulator acc, ContextBuilder context, Provider provider,
                                           List<Tool> tools, IO io) {
         ProviderResponse finalResponse = provider.send(context.messages(), tools, io::write, io::writeReasoning);
-        accumulate(acc, finalResponse);
-        return new LoopResult(finalResponse.message(), new Usage(acc.prompt, acc.completion), acc.estimated);
+        acc.add(finalResponse.usage(), finalResponse.usageEstimated());
+        return new LoopResult(finalResponse.message(), acc.snapshot(), acc.estimated());
     }
 
     private static String roundLimitMessage(int maxToolRounds) {
@@ -103,16 +103,6 @@ public final class ToolLoop {
     private static String budgetLimitMessage(ToolBudget budget) {
         return "Session tool call budget exhausted (" + budget.used() + "/" + budget.limit() + "). "
                 + "Give a brief status update and tell the user to /reset (or send 'continue') if more work is needed.";
-    }
-
-    private static void accumulate(Accumulator acc, ProviderResponse response) {
-        acc.prompt += tokens(response.usage().promptTokens());
-        acc.completion += tokens(response.usage().completionTokens());
-        acc.estimated = acc.estimated || response.usageEstimated();
-    }
-
-    private static int tokens(Integer value) {
-        return value == null ? 0 : value;
     }
 
     private static ToolResult executeTool(ToolCall call, List<Tool> tools, IO io) {
@@ -161,11 +151,5 @@ public final class ToolLoop {
             }
         }
         return "";
-    }
-
-    private static final class Accumulator {
-        int prompt;
-        int completion;
-        boolean estimated;
     }
 }

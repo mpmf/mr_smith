@@ -6,9 +6,7 @@ import java.util.Locale;
 
 public class UsageTracker {
 
-    private int promptTokens;
-    private int completionTokens;
-    private boolean sessionEstimated;
+    private final UsageAccumulator accumulator = new UsageAccumulator();
     private Usage lastTurn;
     private boolean lastTurnEstimated;
 
@@ -18,26 +16,14 @@ public class UsageTracker {
         }
         lastTurn = usage;
         lastTurnEstimated = estimated;
-        accumulate(usage, estimated);
+        accumulator.add(usage, estimated);
     }
 
     public void recordSessionUsage(Usage usage, boolean estimated) {
         if (usage == null) {
             return;
         }
-        accumulate(usage, estimated);
-    }
-
-    private void accumulate(Usage usage, boolean estimated) {
-        if (estimated) {
-            sessionEstimated = true;
-        }
-        if (usage.promptTokens() != null) {
-            promptTokens += usage.promptTokens();
-        }
-        if (usage.completionTokens() != null) {
-            completionTokens += usage.completionTokens();
-        }
+        accumulator.add(usage, estimated);
     }
 
     public String lastTurnLine() {
@@ -47,39 +33,37 @@ public class UsageTracker {
         int in = lastTurn.promptTokens() == null ? 0 : lastTurn.promptTokens();
         int out = lastTurn.completionTokens() == null ? 0 : lastTurn.completionTokens();
         String turnEst = lastTurnEstimated ? " (est.)" : "";
-        String sessionEst = sessionEstimated ? " (est.)" : "";
+        String sessionEst = accumulator.estimated() ? " (est.)" : "";
         return String.format(Locale.US,
                 "tokens: %,d in%s · %,d out%s · total %,d · session %,d%s",
                 in, turnEst, out, turnEst, in + out, totalTokens(), sessionEst);
     }
 
     public String usageReport() {
-        String est = sessionEstimated ? " (est.)" : "";
+        String est = accumulator.estimated() ? " (est.)" : "";
         return String.format(Locale.US,
                 "Session usage:%n  prompt:      %,d%n  completion:  %,d%n  total:       %,d%s",
-                promptTokens, completionTokens, totalTokens(), est);
+                promptTokens(), completionTokens(), totalTokens(), est);
     }
 
     public int promptTokens() {
-        return promptTokens;
+        return accumulator.promptTokens();
     }
 
     public int completionTokens() {
-        return completionTokens;
+        return accumulator.completionTokens();
     }
 
     public int totalTokens() {
-        return promptTokens + completionTokens;
+        return accumulator.totalTokens();
     }
 
     public boolean sessionEstimated() {
-        return sessionEstimated;
+        return accumulator.estimated();
     }
 
     public void reset() {
-        promptTokens = 0;
-        completionTokens = 0;
-        sessionEstimated = false;
+        accumulator.reset();
         lastTurn = null;
         lastTurnEstimated = false;
     }
