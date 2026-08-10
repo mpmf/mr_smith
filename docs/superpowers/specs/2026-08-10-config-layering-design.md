@@ -56,6 +56,10 @@ public record AgentRuntime(AgentConfig agent, ProviderConfig provider, AgentRunt
 instead of constructing a flat `AppConfig`. Agent/provider validation stays in
 the `AgentCatalog` constructor, unchanged.
 
+`ProviderConfig` gains a compact constructor that strips a trailing slash from
+`baseUrl`, preserving the normalization the deleted `AppConfig` constructor
+used to perform as a type-level invariant.
+
 ### Consumer updates
 
 | Consumer | Change |

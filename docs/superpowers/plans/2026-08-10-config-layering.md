@@ -20,7 +20,8 @@
 
 **Modify (main):**
 - `src/main/java/com/mrsmith/config/AgentCatalog.java` — `resolve` returns `AgentRuntime`
-- `src/main/java/com/mrsmith/config/ConfigLoader.java` — `parseProviders` gains env map + trailing-slash strip
+- `src/main/java/com/mrsmith/config/ConfigLoader.java` — `parseProviders` gains the env map
+- `src/main/java/com/mrsmith/config/ProviderConfig.java` — compact constructor strips a trailing slash from `baseUrl` (moved from the deleted `AppConfig` constructor)
 - `src/main/java/com/mrsmith/provider/ProviderFactory.java` — `create(AgentRuntime)`
 - `src/main/java/com/mrsmith/provider/OpenAiCompatibleProvider.java` — holds `AgentRuntime runtime`
 - `src/main/java/com/mrsmith/tool/ToolRegistryFactory.java` — `create(AgentRuntime, ...)`
@@ -130,13 +131,13 @@ with:
     }
 ```
 
-- [ ] **Step 4: Update `ConfigLoader.parseProviders` signature (env map + trailing-slash strip)**
+- [ ] **Step 4: Update `ConfigLoader.parseProviders` and `ProviderConfig`**
 
 In `src/main/java/com/mrsmith/config/ConfigLoader.java`:
 
-1. Add the import `import java.util.Locale;`.
+1. Add `import java.util.Locale;`.
 2. Change the call `List<ProviderConfig> providers = parseProviders(root);` to `List<ProviderConfig> providers = parseProviders(root, env);`.
-3. Replace `parseProviders` with:
+3. Replace the `parseProviders` method and add the `normalizeEnvName` helper:
 
 ```java
     private static List<ProviderConfig> parseProviders(JsonNode root, Map<String, String> env) {
@@ -150,7 +151,7 @@ In `src/main/java/com/mrsmith/config/ConfigLoader.java`:
                 if (envKey != null && !envKey.isBlank()) {
                     apiKey = envKey;
                 }
-                result.add(new ProviderConfig(name, apiKey, stripTrailingSlash(node.path("baseUrl").asText())));
+                result.add(new ProviderConfig(name, apiKey, node.path("baseUrl").asText()));
             }
         }
         return result;
@@ -159,15 +160,22 @@ In `src/main/java/com/mrsmith/config/ConfigLoader.java`:
     private static String normalizeEnvName(String name) {
         return name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "_");
     }
-
-    private static String stripTrailingSlash(String baseUrl) {
-        return baseUrl != null && baseUrl.endsWith("/")
-                ? baseUrl.substring(0, baseUrl.length() - 1)
-                : baseUrl;
-    }
 ```
 
-This preserves the trailing-slash stripping that `AppConfig`'s constructor previously did, and adds the env-key resolution that Task 2 will pin with tests.
+In `src/main/java/com/mrsmith/config/ProviderConfig.java`, add a compact constructor that strips a trailing slash from `baseUrl` (this preserves the behavior `AppConfig`'s constructor previously had, as a type-level invariant):
+
+```java
+package com.mrsmith.config;
+
+public record ProviderConfig(String name, String apiKey, String baseUrl) {
+
+    public ProviderConfig {
+        if (baseUrl != null && baseUrl.endsWith("/")) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+        }
+    }
+}
+```
 
 - [ ] **Step 5: Update `ProviderFactory` and `ToolRegistryFactory`**
 
@@ -326,7 +334,7 @@ to:
         provider = new OpenAiCompatibleProvider(runtime, HttpClient.newHttpClient(), 0L);
    ```
    - Replace `import com.mrsmith.config.AppConfig;` with imports for `AgentConfig`, `AgentRuntime`, and `ProviderConfig`.
-   - Note: `server.url("/").toString()` ends in `/`; the `.replaceAll("/+$", "")` normalizes it because trailing-slash stripping now lives in `ConfigLoader.parseProviders` (it no longer happens in the config record's constructor).
+   - Note: `server.url("/").toString()` ends in `/`; the `ProviderConfig` compact constructor strips the trailing slash (as the old `AppConfig` constructor did), so the raw URL is passed directly with no test-side normalization.
 
 4. `src/test/java/com/mrsmith/chat/ChatSessionTest.java`:
    - Change `import com.mrsmith.config.AppConfig;` to `import com.mrsmith.config.AgentRuntime;`.
