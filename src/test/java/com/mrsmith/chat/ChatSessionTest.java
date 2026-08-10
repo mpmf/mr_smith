@@ -484,6 +484,39 @@ class ChatSessionTest {
     }
 
     @Test
+    void alwaysAllowsToolWithoutReprompting() throws Exception {
+        FakeTool shell = new FakeTool("shell", false, new ToolResult("ran", false));
+        ToolRegistryFactory registryFactory = (config, catalog, io, taskRunner) -> new ToolRegistry(List.of(shell));
+        FakeToolProvider toolProvider = new FakeToolProvider();
+        toolProvider.alwaysCall("shell", JSON.readTree("{\"command\":\"ls\"}"));
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "a", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(toolProvider), registryFactory, emptySkills(), "a");
+        session.run();
+        assertEquals(9, shell.calls);
+        long prompts = io.lines.stream().filter(l -> l.startsWith("Run shell(")).count();
+        assertEquals(1, prompts);
+        assertFalse(io.lines.stream().anyMatch(l -> l.contains("declined")));
+    }
+
+    @Test
+    void alwaysAllowClearedOnReset() throws Exception {
+        FakeTool shell = new FakeTool("shell", false, new ToolResult("ran", false));
+        ToolRegistryFactory registryFactory = (config, catalog, io, taskRunner) -> new ToolRegistry(List.of(shell));
+        AlternatingToolProvider provider = new AlternatingToolProvider(
+                new ToolCall("c1", "shell", JSON.readTree("{\"command\":\"ls\"}")));
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("hello", "a", "/reset", "again", "a", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, new FullContextBuilder(),
+                catalog(), new FakeProviderFactory(provider), registryFactory, emptySkills(), "a");
+        session.run();
+        assertEquals(2, shell.calls);
+        long prompts = io.lines.stream().filter(l -> l.startsWith("Run shell(")).count();
+        assertEquals(2, prompts);
+    }
+
+    @Test
     void unknownToolProducesErrorResult() throws Exception {
         ToolRegistryFactory registryFactory = (config, catalog, io, taskRunner) -> new ToolRegistry(List.of());
         FakeToolProvider toolProvider = new FakeToolProvider(
@@ -1056,6 +1089,30 @@ class ChatSessionTest {
                 return first.send(history, tools, tokenSink, reasoningSink);
             }
             return then.send(history, tools, tokenSink, reasoningSink);
+        }
+    }
+
+    static class AlternatingToolProvider implements Provider {
+        final ToolCall call;
+        final List<List<ChatMessage>> receivedHistories = new ArrayList<>();
+        int calls = 0;
+
+        AlternatingToolProvider(ToolCall call) {
+            this.call = call;
+        }
+
+        @Override
+        public ProviderResponse send(List<ChatMessage> history, List<Tool> tools,
+                                     Consumer<String> tokenSink, Consumer<String> reasoningSink) {
+            receivedHistories.add(new ArrayList<>(history));
+            calls++;
+            if (calls == 1 || calls == 3) {
+                return new ProviderResponse(
+                        new ChatMessage(Role.ASSISTANT, null, null, List.of(call), null),
+                        new Usage(0, 0), false);
+            }
+            return new ProviderResponse(new ChatMessage(Role.ASSISTANT, "answer " + calls),
+                    new Usage(0, 0), false);
         }
     }
 

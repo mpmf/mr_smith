@@ -32,7 +32,8 @@ public final class ToolLoop {
     }
 
     public static LoopResult run(ContextBuilder context, Provider provider, List<Tool> tools,
-                                 IO io, int maxToolRounds, ToolBudget budget, Sink sink) {
+                                 IO io, int maxToolRounds, ToolBudget budget, Sink sink,
+                                 ToolApproval approval) {
         UsageAccumulator acc = new UsageAccumulator();
         for (int round = 0; ; round++) {
             ProviderResponse response = provider.send(context.messages(), tools, io::write, io::writeReasoning);
@@ -64,7 +65,7 @@ public final class ToolLoop {
                     budgetStopped = true;
                     break;
                 }
-                ToolResult result = executeTool(call, tools, io);
+                ToolResult result = executeTool(call, tools, io, approval);
                 budget.record();
                 io.writeToolExecution("tool: " + call.name() + "(" + describe(call) + ") -> "
                         + (result.error() ? "error" : "ok"));
@@ -105,14 +106,24 @@ public final class ToolLoop {
                 + "Give a brief status update and tell the user to /reset (or send 'continue') if more work is needed.";
     }
 
-    private static ToolResult executeTool(ToolCall call, List<Tool> tools, IO io) {
+    private enum ConfirmDecision { ALLOW, ALWAYS_ALLOW, DECLINE }
+
+    private static ToolResult executeTool(ToolCall call, List<Tool> tools, IO io, ToolApproval approval) {
         Optional<Tool> found = find(tools, call.name());
         if (found.isEmpty()) {
             return new ToolResult("Unknown tool: " + call.name(), true);
         }
         Tool tool = found.get();
-        if (!tool.isReadOnly() && !confirm(call, tool, io)) {
-            return new ToolResult("User declined to run " + call.name() + ".", true);
+        if (!tool.isReadOnly()) {
+            if (!approval.isAlwaysAllowed(tool.name())) {
+                ConfirmDecision decision = confirm(call, tool, io);
+                if (decision == ConfirmDecision.DECLINE) {
+                    return new ToolResult("User declined to run " + call.name() + ".", true);
+                }
+                if (decision == ConfirmDecision.ALWAYS_ALLOW) {
+                    approval.allowAlways(tool.name());
+                }
+            }
         }
         try {
             return tool.execute(call.arguments());
@@ -130,16 +141,25 @@ public final class ToolLoop {
         return Optional.empty();
     }
 
-    private static boolean confirm(ToolCall call, Tool tool, IO io) {
-        io.writePrompt("Run " + tool.name() + "(" + describe(call) + ") [y/N]? ");
+    private static ConfirmDecision confirm(ToolCall call, Tool tool, IO io) {
+        io.writePrompt("Run " + tool.name() + "(" + describe(call) + ") [y/N/a]? ");
         String answer;
         try {
             answer = io.readLine();
         } catch (IOException e) {
-            return false;
+            return ConfirmDecision.DECLINE;
         }
-        return answer != null && (answer.trim().equalsIgnoreCase("y")
-                || answer.trim().equalsIgnoreCase("yes"));
+        if (answer == null) {
+            return ConfirmDecision.DECLINE;
+        }
+        String trimmed = answer.trim();
+        if (trimmed.equalsIgnoreCase("a") || trimmed.equalsIgnoreCase("always")) {
+            return ConfirmDecision.ALWAYS_ALLOW;
+        }
+        if (trimmed.equalsIgnoreCase("y") || trimmed.equalsIgnoreCase("yes")) {
+            return ConfirmDecision.ALLOW;
+        }
+        return ConfirmDecision.DECLINE;
     }
 
     private static String describe(ToolCall call) {
