@@ -230,9 +230,13 @@ Final answer handling (history, `contextBuilder.appendAssistant`,
 `appendAssistant` transcript, usage line, warnings) is unchanged.
 
 **Approval.** `shell` and `write_file` are not read-only. Before running one, the
-session prompts `Run <name>(<args>) [y/N]?` via the `IO` interface and reads a
-line; anything but `y`/`yes` (case-insensitive) is a decline, recorded as an
-error tool result. Read-only tools (`read_file`, `list_dir`, `glob`,
+session prompts `Run <name>(<args>) [y/N/a=always]?` via the `IO` interface and
+reads a line; `y`/`yes` (case-insensitive) approves just that call,
+`a`/`always` approves and remembers the tool name for the rest of the session
+(shared with sub-agents), and anything else — including Ctrl-D (EOF) — is a
+decline, recorded as an error tool result. Already-approved tools skip the
+prompt. Approvals are cleared on `/reset` and agent switch, and live only in
+memory (not persisted). Read-only tools (`read_file`, `list_dir`, `glob`,
 `web_fetch`) run without prompting. Prompt input is read with the same
 `io.readLine()` used for the main REPL; Ctrl-D at the prompt counts as decline.
 
