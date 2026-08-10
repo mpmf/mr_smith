@@ -138,6 +138,13 @@ default ApprovalCheck approvalCheck(JsonNode args) {
 - `ShellTool` overrides it: returns `null` for SAFE commands, and
   `ApprovalCheck(classification.keys(), reason)` otherwise, where `reason` is
   `"dangerous command"` if the verdict is DANGEROUS else `"unknown command"`.
+  Shell command keys are namespaced with a `shell:` prefix (`shell:git commit`,
+  `shell:rm`) so they can never collide with built-in tool names in the shared
+  `ToolApproval` set — approving `shell:edit` does not approve the `edit` tool.
+
+Contract: a non-null `ApprovalCheck` always carries at least one key (read-only
+tools return `null`; the classifier returns non-empty keys whenever a command
+requires approval).
 
 `isReadOnly()` stays on the interface (still used by the registry and tests)
 but `ToolLoop` stops branching on it.
@@ -255,14 +262,15 @@ the model knows what to expect.
     `kubectl apply` true; `shellDangerousCommands: ["echo"]` overrides built-in
     safe → true.
   - key stripping: `git commit -m x && rm -rf t` → keys `git commit`, `rm`.
-- `ShellToolTest`: `approvalCheck` returns `null` for safe, a key for
-  dangerous.
+- `ShellToolTest`: `approvalCheck` returns `null` for safe, a namespaced key
+  (`shell:rm`) for dangerous.
 - `ChatSessionTest`:
   - safe shell command runs without prompting.
-  - dangerous shell command prompts; `a` records the command key; a later
-    identical command runs without prompting.
+  - dangerous shell command prompts; `a` records the namespaced command key
+    (`shell:touch`); a later identical command runs without prompting.
   - chain `a` records each segment key.
-  - existing `allowAlways("shell")` test updated to pre-approve a command key.
+  - existing `allowAlways("shell")` test updated to pre-approve a namespaced
+    command key.
   - existing confirm/decline tests pass unchanged.
 - `SubAgentRunnerTest`: shared always-allow works with a command key inside a
   sub-agent.
