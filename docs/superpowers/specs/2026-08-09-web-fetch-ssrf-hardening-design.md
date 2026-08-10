@@ -49,9 +49,11 @@ a redirect.
 `WebFetchTool` gains a static `isPrivateHost(String host)` check applied to the
 URL's host (from `URI.getHost()`):
 
-1. Normalize the host: lowercase, strip a single trailing dot (`localhost.`
-   resolves to 127.0.0.1 and must be caught), and strip any IPv6 `%zone` suffix.
-   `localhost` and any `*.localhost` host is private.
+1. Normalize the host: lowercase, strip surrounding `[` `]` on IPv6 literals
+   (`URI.getHost()` returns bracketed IPv6, e.g. `[fe80::1%25eth0]`), un-encode
+   `%25` back to `%`, strip a single trailing dot (`localhost.` resolves to
+   127.0.0.1 and must be caught), and strip any IPv6 `%zone` suffix before
+   classification. `localhost` and any `*.localhost` host is private.
 2. If the host is an IP literal — IPv4 (`\d+(\.\d+){0,3}`, which covers
    dotted-quad, classful short forms, and integer-form addresses like
    `2130706433` = 127.0.0.1) or IPv6 (contains `:`) — resolve it with
