@@ -12,6 +12,14 @@ public final class AtomicFiles {
     }
 
     public static void write(Path target, byte[] content) throws IOException {
+        if (Files.exists(target)) {
+            replaceAtomically(target, content);
+        } else {
+            Files.write(target, content);
+        }
+    }
+
+    private static void replaceAtomically(Path target, byte[] content) throws IOException {
         Path parent = target.toAbsolutePath().getParent();
         Path temp = Files.createTempFile(parent, ".mrsmith-", ".tmp");
         try {
@@ -23,15 +31,15 @@ public final class AtomicFiles {
                 Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException | RuntimeException e) {
-            Files.deleteIfExists(temp);
+            try {
+                Files.deleteIfExists(temp);
+            } catch (IOException ignored) {
+            }
             throw e;
         }
     }
 
     private static void preservePermissions(Path target, Path temp) {
-        if (!Files.exists(target)) {
-            return;
-        }
         try {
             Files.setPosixFilePermissions(temp, Files.getPosixFilePermissions(target));
         } catch (IOException | UnsupportedOperationException ignored) {

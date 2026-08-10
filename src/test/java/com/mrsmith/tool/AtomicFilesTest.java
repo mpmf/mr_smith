@@ -45,4 +45,14 @@ class AtomicFilesTest {
         AtomicFiles.write(target, "new".getBytes(StandardCharsets.UTF_8));
         assertTrue(Files.getPosixFilePermissions(target).contains(PosixFilePermission.OWNER_EXECUTE));
     }
+
+    @Test
+    void newFileMatchesPlainWritePermissions() throws IOException {
+        assumeTrue(FileSystems.getDefault().supportedFileAttributeViews().contains("posix"));
+        Path target = tempDir.resolve("created.txt");
+        Path control = tempDir.resolve("control.txt");
+        AtomicFiles.write(target, "x".getBytes(StandardCharsets.UTF_8));
+        Files.write(control, "x".getBytes(StandardCharsets.UTF_8));
+        assertEquals(Files.getPosixFilePermissions(control), Files.getPosixFilePermissions(target));
+    }
 }
