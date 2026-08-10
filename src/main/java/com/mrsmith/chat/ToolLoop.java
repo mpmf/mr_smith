@@ -142,7 +142,7 @@ public final class ToolLoop {
     }
 
     private static ConfirmDecision confirm(ToolCall call, Tool tool, IO io) {
-        io.writePrompt("Run " + tool.name() + "(" + describe(call) + ") [y/N/a]? ");
+        io.writePrompt("Run " + tool.name() + "(" + describe(call) + ") [y/N/a=always]? ");
         String answer;
         try {
             answer = io.readLine();
