@@ -195,6 +195,10 @@ public final class WebFetchTool implements Tool {
 
     private static String normalizeHost(String host) {
         String h = host.toLowerCase(Locale.ROOT);
+        if (h.startsWith("[") && h.endsWith("]")) {
+            h = h.substring(1, h.length() - 1);
+            h = h.replace("%25", "%");
+        }
         if (h.endsWith(".")) {
             h = h.substring(0, h.length() - 1);
         }

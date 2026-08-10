@@ -231,14 +231,17 @@ class WebFetchToolTest {
         assertTrue(WebFetchTool.isPrivateHost("169.254.169.254"));
         assertTrue(WebFetchTool.isPrivateHost("::ffff:169.254.169.254"));
         assertTrue(WebFetchTool.isPrivateHost("::1"));
+        assertTrue(WebFetchTool.isPrivateHost("[::1]"));
         assertTrue(WebFetchTool.isPrivateHost("::"));
         assertTrue(WebFetchTool.isPrivateHost("fe80::1"));
         assertTrue(WebFetchTool.isPrivateHost("fe80::1%eth0"));
+        assertTrue(WebFetchTool.isPrivateHost("[fe80::1%25eth0]"));
         assertTrue(WebFetchTool.isPrivateHost("fc00::1"));
         assertTrue(WebFetchTool.isPrivateHost("0.0.0.0"));
         assertTrue(WebFetchTool.isPrivateHost("2130706433"));
         assertTrue(WebFetchTool.isPrivateHost("3232235777"));
         assertFalse(WebFetchTool.isPrivateHost("example.com"));
+        assertFalse(WebFetchTool.isPrivateHost("example.com."));
         assertFalse(WebFetchTool.isPrivateHost("api.openai.com"));
         assertFalse(WebFetchTool.isPrivateHost("8.8.8.8"));
         assertFalse(WebFetchTool.isPrivateHost("134744072"));
@@ -319,7 +322,8 @@ class WebFetchToolTest {
                 "http://192.168.1.1/",
                 "http://172.16.0.1/",
                 "http://169.254.169.254/",
-                "http://[::1]/")) {
+                "http://[::1]/",
+                "http://[fe80::1%25eth0]/")) {
             StubIo io = new StubIo(List.of("n"));
             WebFetchTool tool = tool(io);
             ToolResult result = fetch(tool, url);
