@@ -8,6 +8,7 @@ import com.mrsmith.util.Json;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 public final class ReadFileTool implements Tool {
 
@@ -46,6 +47,24 @@ public final class ReadFileTool implements Tool {
     @Override
     public boolean isReadOnly() {
         return true;
+    }
+
+    @Override
+    public Tool.ApprovalCheck approvalCheck(JsonNode args) {
+        String pathArg = args.path("path").asText(null);
+        if (pathArg == null || pathArg.isBlank()) {
+            return null;
+        }
+        try {
+            Path target = ToolPaths.requireWithin(root, pathArg);
+            if (SensitivePaths.isSensitive(target)) {
+                return new Tool.ApprovalCheck(List.of(name()), "sensitive file");
+            }
+            target = ToolPaths.requireCanonicalWithin(root, target);
+            return SensitivePaths.isSensitive(target) ? new Tool.ApprovalCheck(List.of(name()), "sensitive file") : null;
+        } catch (ToolException e) {
+            return null;
+        }
     }
 
     @Override
