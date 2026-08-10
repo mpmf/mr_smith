@@ -92,6 +92,12 @@ class ShellToolTest {
     }
 
     @Test
+    void nullArgsNeedsNoApproval() {
+        ShellTool tool = new ShellTool(tempDir, 5000);
+        assertNull(tool.approvalCheck(null));
+    }
+
+    @Test
     void shellCommandApprovalKeysAreNamespaced() throws Exception {
         ShellTool tool = new ShellTool(tempDir, 5000);
         Tool.ApprovalCheck check = tool.approvalCheck(JSON.readTree("{\"command\":\"edit x\"}"));

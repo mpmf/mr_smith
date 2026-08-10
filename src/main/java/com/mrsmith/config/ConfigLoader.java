@@ -105,7 +105,9 @@ public final class ConfigLoader {
                         node.hasNonNull("maxContextTokens") ? node.get("maxContextTokens").asInt() : null,
                         node.hasNonNull("maxToolRounds") ? node.get("maxToolRounds").asInt() : null,
                         node.hasNonNull("maxToolCallsPerSession") ? node.get("maxToolCallsPerSession").asInt() : null,
-                        parseTools(node)));
+                        parseTools(node),
+                        parseStringList(node, "shellHarmlessCommands"),
+                        parseStringList(node, "shellDangerousCommands")));
             }
         }
         return result;
@@ -120,6 +122,17 @@ public final class ConfigLoader {
             }
         }
         return tools;
+    }
+
+    private static List<String> parseStringList(JsonNode node, String field) {
+        List<String> result = new ArrayList<>();
+        JsonNode arr = node.path(field);
+        if (arr.isArray()) {
+            for (JsonNode item : arr) {
+                result.add(item.asText());
+            }
+        }
+        return result;
     }
 
     private static String firstNonNull(String... values) {

@@ -2,6 +2,7 @@ package com.mrsmith.tool;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mrsmith.config.ShellConfig;
 import com.mrsmith.io.IO;
 import com.mrsmith.skill.SkillCatalog;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,8 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -136,6 +139,15 @@ class ToolRegistryTest {
         assertEquals(10, registry.tools().size());
         assertTrue(registry.find("shell").isPresent());
         assertTrue(registry.find("web_fetch").isPresent());
+    }
+
+    @Test
+    void shellToolUsesProvidedShellConfig() throws Exception {
+        ToolRegistry registry = ToolRegistry.with(List.of("shell"), emptyCatalog(), io, taskRunner,
+                new ShellConfig(List.of("frobnicate"), List.of()));
+        ShellTool shell = (ShellTool) registry.find("shell").orElseThrow();
+        assertNull(shell.approvalCheck(JSON.readTree("{\"command\":\"frobnicate x\"}")));
+        assertNotNull(shell.approvalCheck(JSON.readTree("{\"command\":\"rm x\"}")));
     }
 
     @Test

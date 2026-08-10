@@ -7,6 +7,7 @@ import com.mrsmith.config.AgentCatalog;
 import com.mrsmith.config.ConfigException;
 import com.mrsmith.config.ConfigLoader;
 import com.mrsmith.config.CliConfig;
+import com.mrsmith.config.ShellConfig;
 import com.mrsmith.io.IO;
 import com.mrsmith.io.ReplIo;
 import com.mrsmith.provider.OpenAiCompatibleProvider;
@@ -54,7 +55,10 @@ public class ChatCommand implements Callable<Integer> {
         SkillCatalog skills = SkillCatalog.discover(catalog.projectSkillsDir(), catalog.globalSkillsDir());
         ChatSession session = new ChatSession(io, transcripts, contextBuilder, catalog,
                 OpenAiCompatibleProvider::new,
-                (runtime, skillCatalog, terminalIo, taskRunner) -> ToolRegistry.with(runtime.agent().tools(), skillCatalog, terminalIo, taskRunner),
+                (runtime, skillCatalog, terminalIo, taskRunner) -> ToolRegistry.with(
+                        runtime.agent().tools(), skillCatalog, terminalIo, taskRunner,
+                        new ShellConfig(runtime.agent().shellHarmlessCommands(),
+                                runtime.agent().shellDangerousCommands())),
                 skills, initialAgent);
         try {
             session.run();

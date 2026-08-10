@@ -66,6 +66,9 @@ public final class ShellTool implements Tool {
 
     @Override
     public Tool.ApprovalCheck approvalCheck(JsonNode args) {
+        if (args == null) {
+            return null;
+        }
         String command = args.path("command").asText(null);
         if (command == null || command.isBlank()) {
             return null;

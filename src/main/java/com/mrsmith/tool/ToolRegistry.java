@@ -1,5 +1,6 @@
 package com.mrsmith.tool;
 
+import com.mrsmith.config.ShellConfig;
 import com.mrsmith.io.IO;
 import com.mrsmith.skill.SkillCatalog;
 
@@ -37,8 +38,18 @@ public final class ToolRegistry implements ToolState {
     }
 
     public static ToolRegistry with(List<String> toolNames, SkillCatalog catalog, IO io, TaskRunner taskRunner) {
+        return with(toolNames, catalog, io, taskRunner, ShellConfig.empty());
+    }
+
+    public static ToolRegistry with(List<String> toolNames, SkillCatalog catalog, IO io, TaskRunner taskRunner,
+                                    ShellConfig shellConfig) {
+        ShellCommandClassifier classifier = new ShellCommandClassifier(shellConfig);
         List<Tool> tools = new ArrayList<>();
         for (String name : toolNames) {
+            if (name.equals("shell")) {
+                tools.add(new ShellTool(classifier));
+                continue;
+            }
             Function<IO, Tool> factory = BUILT_INS.get(name);
             if (factory == null) {
                 throw new ToolException("Unknown tool: " + name);
