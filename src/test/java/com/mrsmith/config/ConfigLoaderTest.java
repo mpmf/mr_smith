@@ -262,6 +262,48 @@ class ConfigLoaderTest {
         assertEquals("https://example.com/v1", catalog.resolve("a").provider().baseUrl());
     }
 
+    @Test
+    void providerApiKeyFromEnvOverridesFile() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "opencode", "apiKey": "sk-file", "baseUrl": "https://example.com/v1" } ],
+                  "agents": [ { "name": "a", "provider": "opencode", "model": "m" } ],
+                  "defaultAgent": "a"
+                }
+                """);
+        AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(),
+                Map.of("MRSMITH_OPENCODE_API_KEY", "sk-env"));
+        assertEquals("sk-env", catalog.resolve("a").provider().apiKey());
+    }
+
+    @Test
+    void providerApiKeyFromEnvFillsMissingKey() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "opencode", "baseUrl": "https://example.com/v1" } ],
+                  "agents": [ { "name": "a", "provider": "opencode", "model": "m" } ],
+                  "defaultAgent": "a"
+                }
+                """);
+        AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(),
+                Map.of("MRSMITH_OPENCODE_API_KEY", "sk-env"));
+        assertEquals("sk-env", catalog.resolve("a").provider().apiKey());
+    }
+
+    @Test
+    void providerApiKeyEnvNameNormalizesDashes() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "my-provider", "baseUrl": "https://example.com/v1" } ],
+                  "agents": [ { "name": "a", "provider": "my-provider", "model": "m" } ],
+                  "defaultAgent": "a"
+                }
+                """);
+        AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(),
+                Map.of("MRSMITH_MY_PROVIDER_API_KEY", "sk-env"));
+        assertEquals("sk-env", catalog.resolve("a").provider().apiKey());
+    }
+
     private Path noFile() {
         return tempDir.resolve("missing.json");
     }
