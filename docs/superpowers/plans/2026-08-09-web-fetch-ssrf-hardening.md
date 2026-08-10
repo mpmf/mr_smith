@@ -251,7 +251,7 @@ class WebFetchToolTest {
     }
 
     private static ToolResult fetch(WebFetchTool tool, String url) {
-        return tool.execute(JSON.readTree("{\"url\":\"" + url + "\"}"));
+        return tool.execute(JSON.createObjectNode().put("url", url));
     }
 
     @Test
@@ -455,6 +455,7 @@ import com.mrsmith.io.IO;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
@@ -631,10 +632,19 @@ public final class WebFetchTool implements Tool {
         try {
             InetAddress address = InetAddress.getByName(h);
             return address.isLoopbackAddress() || address.isAnyLocalAddress()
-                    || address.isLinkLocalAddress() || address.isSiteLocalAddress();
+                    || address.isLinkLocalAddress() || address.isSiteLocalAddress()
+                    || isUniqueLocalAddress(address);
         } catch (UnknownHostException e) {
             return false;
         }
+    }
+
+    private static boolean isUniqueLocalAddress(InetAddress address) {
+        if (!(address instanceof Inet6Address)) {
+            return false;
+        }
+        byte[] bytes = address.getAddress();
+        return (bytes[0] & 0xfe) == 0xfc;
     }
 
     private static boolean isIpLiteral(String host) {
