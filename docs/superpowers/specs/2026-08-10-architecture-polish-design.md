@@ -73,15 +73,16 @@ registries through one seam.
 New `com.mrsmith.tool.AtomicFiles` with a static `write(Path target,
 byte[] content)`:
 
-1. `Files.createTempFile(parent, ".mrsmith-", ".tmp")` in the target's parent
-   directory (same filesystem).
-2. Write the bytes to the temp file.
-3. If the target exists and the filesystem supports POSIX permissions, copy the
-   target's permissions onto the temp file (best-effort; guarded).
-4. `Files.move(temp, target, ATOMIC_MOVE, REPLACE_EXISTING)`; if
-   `AtomicMoveNotSupportedException` is thrown, fall back to
-   `Files.move(temp, target, REPLACE_EXISTING)`.
-5. On any failure, delete the temp file (best-effort) before propagating.
+- **New file** (target does not exist): plain `Files.write`. There is no prior
+  content to protect, and this preserves the old umask-derived default
+  permissions (`Files.writeString` behavior); `Files.createTempFile` would have
+  produced owner-only `0600` files, a behavior regression.
+- **Existing file** (target exists): write to a temp file in the target's
+  parent directory (same filesystem), copy the target's POSIX permissions onto
+  the temp, then `Files.move(temp, target, ATOMIC_MOVE, REPLACE_EXISTING)`,
+  falling back to a plain replace move if the filesystem lacks atomic moves. On
+  any failure the temp file is deleted (best-effort) before the error
+  propagates.
 
 `EditTool.execute` writes via `AtomicFiles.write(real, updatedBytes)`.
 `WriteFileTool.execute` writes via `AtomicFiles.write(target, contentBytes)`.
