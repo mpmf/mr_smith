@@ -59,7 +59,16 @@ public final class WriteFileTool implements Tool {
         }
         try {
             Path target = ToolPaths.requireWithin(root, pathArg);
-            return SensitivePaths.isSensitive(target) ? new Tool.ApprovalCheck(List.of(name()), "sensitive file") : null;
+            if (SensitivePaths.isSensitive(target)) {
+                return new Tool.ApprovalCheck(List.of(name()), "sensitive file");
+            }
+            if (Files.exists(target)) {
+                target = ToolPaths.requireCanonicalWithin(root, target);
+                if (SensitivePaths.isSensitive(target)) {
+                    return new Tool.ApprovalCheck(List.of(name()), "sensitive file");
+                }
+            }
+            return null;
         } catch (ToolException e) {
             return null;
         }

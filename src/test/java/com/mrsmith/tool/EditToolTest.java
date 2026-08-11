@@ -147,4 +147,15 @@ class EditToolTest {
     void noCheckForEscapingPath() {
         assertNull(tool().approvalCheck(editArgs("../outside.txt")));
     }
+
+    @Test
+    void checkForSymlinkToSensitiveFile() throws Exception {
+        Files.writeString(tempDir.resolve(".env"), "SECRET=1");
+        try {
+            Files.createSymbolicLink(tempDir.resolve("link.txt"), tempDir.resolve(".env"));
+            assertNotNull(tool().approvalCheck(editArgs("link.txt")));
+        } catch (UnsupportedOperationException e) {
+            // filesystem without symlink support: skip
+        }
+    }
 }

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -45,5 +46,16 @@ class WriteFileToolTest {
     @Test
     void noCheckForEscapingPath(@TempDir Path root) {
         assertNull(new WriteFileTool(root).approvalCheck(args("../outside.txt")));
+    }
+
+    @Test
+    void checkForSymlinkToSensitiveFile(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve(".env"), "SECRET=1");
+        try {
+            Files.createSymbolicLink(root.resolve("link.txt"), root.resolve(".env"));
+            assertNotNull(new WriteFileTool(root).approvalCheck(args("link.txt")));
+        } catch (UnsupportedOperationException e) {
+            // filesystem without symlink support: skip
+        }
     }
 }
