@@ -1,6 +1,8 @@
 package com.mrsmith.tool;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -9,6 +11,8 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -119,5 +123,28 @@ class EditToolTest {
         assertTrue(result.error());
         assertTrue(result.content().contains("not valid UTF-8"));
         assertTrue(java.util.Arrays.equals(raw, Files.readAllBytes(file)));
+    }
+
+    private JsonNode editArgs(String filePath) {
+        ObjectNode node = JSON.createObjectNode();
+        node.put("filePath", filePath);
+        node.put("oldString", "x");
+        node.put("newString", "y");
+        return node;
+    }
+
+    @Test
+    void noCheckForNormalFile() {
+        assertNull(tool().approvalCheck(editArgs("a.txt")));
+    }
+
+    @Test
+    void checkForDotEnv() {
+        assertNotNull(tool().approvalCheck(editArgs(".env")));
+    }
+
+    @Test
+    void noCheckForEscapingPath() {
+        assertNull(tool().approvalCheck(editArgs("../outside.txt")));
     }
 }

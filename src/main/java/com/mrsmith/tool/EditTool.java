@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.List;
 
 public final class EditTool implements Tool {
 
@@ -52,6 +53,20 @@ public final class EditTool implements Tool {
     @Override
     public boolean isReadOnly() {
         return false;
+    }
+
+    @Override
+    public Tool.ApprovalCheck approvalCheck(JsonNode args) {
+        String pathArg = args.path("filePath").asText(null);
+        if (pathArg == null || pathArg.isBlank()) {
+            return null;
+        }
+        try {
+            Path target = ToolPaths.requireWithin(root, pathArg);
+            return SensitivePaths.isSensitive(target) ? new Tool.ApprovalCheck(List.of(name()), "sensitive file") : null;
+        } catch (ToolException e) {
+            return null;
+        }
     }
 
     @Override
