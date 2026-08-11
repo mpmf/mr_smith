@@ -85,8 +85,11 @@ Override `approvalCheck(args)`:
 - Conservative "could match" heuristic. Return a check when the glob pattern
   could plausibly match a sensitive filename.
 - Concretely: return a check if the pattern contains any of `*`, `?`, `[`,
-  `{`, or a `**` segment. A literal path with no wildcards (e.g. `README.md`)
-  returns `null`.
+  `{`, or a `**` segment. Also return a check when the literal pattern itself
+  names a sensitive file (e.g. `glob(".env")`), so a wildcard-free pattern that
+  directly names a sensitive file still prompts — consistent with `list_dir`.
+- A literal path with no wildcards that does not name a sensitive file (e.g.
+  `README.md`) returns `null`.
 - Over-prompting on broad patterns (e.g. `src/**/*.java`) is acceptable;
   under-prompting is not.
 
