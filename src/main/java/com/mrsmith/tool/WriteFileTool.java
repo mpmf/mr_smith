@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 public final class WriteFileTool implements Tool {
 
@@ -48,6 +49,29 @@ public final class WriteFileTool implements Tool {
     @Override
     public boolean isReadOnly() {
         return false;
+    }
+
+    @Override
+    public Tool.ApprovalCheck approvalCheck(JsonNode args) {
+        String pathArg = args.path("path").asText(null);
+        if (pathArg == null || pathArg.isBlank()) {
+            return null;
+        }
+        try {
+            Path target = ToolPaths.requireWithin(root, pathArg);
+            if (SensitivePaths.isSensitive(target)) {
+                return new Tool.ApprovalCheck(List.of(name()), "sensitive file");
+            }
+            if (Files.exists(target)) {
+                target = ToolPaths.requireCanonicalWithin(root, target);
+                if (SensitivePaths.isSensitive(target)) {
+                    return new Tool.ApprovalCheck(List.of(name()), "sensitive file");
+                }
+            }
+            return null;
+        } catch (ToolException e) {
+            return null;
+        }
     }
 
     @Override
