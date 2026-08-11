@@ -51,6 +51,20 @@ public final class GlobTool implements Tool {
     }
 
     @Override
+    public Tool.ApprovalCheck approvalCheck(JsonNode args) {
+        String pattern = args.path("pattern").asText(null);
+        if (pattern == null || pattern.isBlank()) {
+            return null;
+        }
+        boolean couldMatchSensitive = pattern.indexOf('*') >= 0
+                || pattern.indexOf('?') >= 0
+                || pattern.indexOf('[') >= 0
+                || pattern.indexOf('{') >= 0
+                || SensitivePaths.isSensitive(Path.of(pattern));
+        return couldMatchSensitive ? new Tool.ApprovalCheck(List.of(name()), "pattern may match sensitive files") : null;
+    }
+
+    @Override
     public ToolResult execute(JsonNode args) {
         String pattern = args.path("pattern").asText(null);
         if (pattern == null || pattern.isBlank()) {
