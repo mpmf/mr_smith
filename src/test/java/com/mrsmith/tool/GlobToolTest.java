@@ -40,4 +40,9 @@ class GlobToolTest {
     void checkForEnvGlob(@TempDir Path root) {
         assertNotNull(new GlobTool(root).approvalCheck(args("*.env")));
     }
+
+    @Test
+    void checkForLiteralSensitivePath(@TempDir Path root) {
+        assertNotNull(new GlobTool(root).approvalCheck(args(".env")));
+    }
 }

@@ -59,7 +59,8 @@ public final class GlobTool implements Tool {
         boolean couldMatchSensitive = pattern.indexOf('*') >= 0
                 || pattern.indexOf('?') >= 0
                 || pattern.indexOf('[') >= 0
-                || pattern.indexOf('{') >= 0;
+                || pattern.indexOf('{') >= 0
+                || SensitivePaths.isSensitive(Path.of(pattern));
         return couldMatchSensitive ? new Tool.ApprovalCheck(List.of(name()), "pattern may match sensitive files") : null;
     }
 
