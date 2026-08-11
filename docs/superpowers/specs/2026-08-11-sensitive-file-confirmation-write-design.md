@@ -48,6 +48,10 @@ Override `approvalCheck(args)`:
   `null` — the sandbox already refuses, so no prompt.
 - If `SensitivePaths.isSensitive(target)` → return
   `new ApprovalCheck(List.of(name()), "sensitive file")`.
+- If the target exists, also resolve via `ToolPaths.requireCanonicalWithin`
+  and check the canonical path for sensitivity (guarded by `Files.exists` so
+  it only applies to existing targets). This catches a symlink inside the
+  sandbox that points to a sensitive file, mirroring `ReadFileTool`.
 - Otherwise return `null`.
 - `isReadOnly()` stays `false`.
 
@@ -59,6 +63,8 @@ Override `approvalCheck(args)`:
 - Resolve via `ToolPaths.requireWithin`; on `ToolException` return `null`.
 - If `SensitivePaths.isSensitive(target)` → return
   `new ApprovalCheck(List.of(name()), "sensitive file")`.
+- If the target exists, also resolve via `ToolPaths.requireCanonicalWithin`
+  and check the canonical path for sensitivity (guarded by `Files.exists`).
 - Otherwise return `null`.
 - `isReadOnly()` stays `false`.
 
@@ -75,7 +81,8 @@ Override `approvalCheck(args)`:
 ## Testing
 
 - `WriteFileToolTest` (new): normal in-sandbox path → `null`; `.env`,
-  `config/id_rsa`, `certs/server.pem` → non-null; escaping path → `null`.
+  `config/id_rsa`, `certs/server.pem` → non-null; escaping path → `null`;
+  symlink to a sensitive file → non-null.
 - `EditToolTest` (new): normal file → `null`; `.env` → non-null; escaping path
-  → `null`.
+  → `null`; symlink to a sensitive file → non-null.
 - Full suite stays green.
