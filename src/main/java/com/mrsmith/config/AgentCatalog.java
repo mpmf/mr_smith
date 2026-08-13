@@ -17,6 +17,7 @@ public class AgentCatalog {
     private final Path sessionsDir;
     private final Path projectSkillsDir;
     private final Path globalSkillsDir;
+    private final double contextWindowRatio;
 
     public static Path defaultProjectSkillsDir() {
         return Path.of(System.getProperty("user.dir"), "skills");
@@ -29,12 +30,20 @@ public class AgentCatalog {
     public AgentCatalog(List<ProviderConfig> providers, List<AgentConfig> agents,
                         String defaultAgent, boolean includeUsage, Path sessionsDir) {
         this(providers, agents, defaultAgent, includeUsage, sessionsDir,
-                defaultProjectSkillsDir(), defaultGlobalSkillsDir());
+                defaultProjectSkillsDir(), defaultGlobalSkillsDir(),
+                AgentRuntime.DEFAULT_CONTEXT_WINDOW_RATIO);
     }
 
     public AgentCatalog(List<ProviderConfig> providers, List<AgentConfig> agents,
                         String defaultAgent, boolean includeUsage, Path sessionsDir,
                         Path projectSkillsDir, Path globalSkillsDir) {
+        this(providers, agents, defaultAgent, includeUsage, sessionsDir,
+                projectSkillsDir, globalSkillsDir, AgentRuntime.DEFAULT_CONTEXT_WINDOW_RATIO);
+    }
+
+    public AgentCatalog(List<ProviderConfig> providers, List<AgentConfig> agents,
+                        String defaultAgent, boolean includeUsage, Path sessionsDir,
+                        Path projectSkillsDir, Path globalSkillsDir, double contextWindowRatio) {
         this.providers = new LinkedHashMap<>();
         for (ProviderConfig provider : providers) {
             if (this.providers.putIfAbsent(provider.name(), provider) != null) {
@@ -82,6 +91,7 @@ public class AgentCatalog {
         this.sessionsDir = sessionsDir;
         this.projectSkillsDir = projectSkillsDir;
         this.globalSkillsDir = globalSkillsDir;
+        this.contextWindowRatio = contextWindowRatio;
     }
 
     public AgentRuntime resolve(String agentName) {
@@ -90,7 +100,7 @@ public class AgentCatalog {
             throw new ConfigException("Unknown agent: " + agentName);
         }
         ProviderConfig provider = providers.get(agent.provider());
-        return new AgentRuntime(agent, provider, new AgentRuntime.Globals(includeUsage));
+        return new AgentRuntime(agent, provider, new AgentRuntime.Globals(includeUsage, contextWindowRatio));
     }
 
     public String defaultName() {
