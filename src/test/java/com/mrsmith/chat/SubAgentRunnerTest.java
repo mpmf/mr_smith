@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mrsmith.config.AgentCatalog;
 import com.mrsmith.config.AgentConfig;
+import com.mrsmith.config.ContextStrategy;
 import com.mrsmith.config.ProviderConfig;
 import com.mrsmith.io.IO;
 import com.mrsmith.provider.ChatMessage;
@@ -405,6 +406,31 @@ class SubAgentRunnerTest {
         assertFalse(result.error());
         assertEquals(1, edit.calls);
         assertTrue(io.lines.stream().noneMatch(l -> l.contains("Run edit(")));
+    }
+
+    @Test
+    void slidingSubAgentTrimsOldTurnsOnResume() throws Exception {
+        AgentCatalog catalog = new AgentCatalog(
+                List.of(new ProviderConfig("p", "sk-test", "https://example.com/v1")),
+                List.of(new AgentConfig("a", "p", "m", "sys", 6, null, null,
+                        List.of(), List.of(), List.of(), ContextStrategy.SLIDING)),
+                "a", true, tempDir);
+        Files.createDirectories(tempDir.resolve(sessionId.toString()));
+        FakeProvider provider = new FakeProvider();
+        ToolRegistry tools = new ToolRegistry(List.of());
+        SubAgentRunner runner = new SubAgentRunner(new SubAgentRunner.Context(catalog,
+                new FakeProviderFactory(provider), fixedRegistry(tools), emptySkills(),
+                new StubIo(List.of()), new UsageTracker(), () -> catalog.resolve("a"),
+                () -> sessionId, () -> new ToolBudget(null, new StubIo(List.of())),
+                () -> new ToolApproval()));
+        runner.run("first", null, null);
+        runner.run("continue", null, "subagent-1");
+        List<ChatMessage> second = provider.receivedHistories.get(1);
+        assertEquals(2, second.size());
+        assertEquals(Role.SYSTEM, second.get(0).role());
+        assertEquals("sys", second.get(0).content());
+        assertEquals(Role.USER, second.get(1).role());
+        assertEquals("continue", second.get(1).content());
     }
 
     @Test

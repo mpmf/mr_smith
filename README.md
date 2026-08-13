@@ -35,6 +35,9 @@ answer (or call tools), and drive the session with simple `/` commands.
   JSONL transcript under the sessions directory.
 - **Context awareness** — per-turn usage lines, a `/usage` report, and warnings
   at 85% / 100% of the configured context limit.
+- **Sliding-window context** — agents can opt into a `sliding` context builder
+  that keeps the most recent turns within a fraction of the configured context
+  limit, dropping the oldest turns automatically.
 - **Sandboxed file tools** — all file/command activity is rooted at the CWD
   where mr-smith was launched; paths that escape it are refused.
 
@@ -87,11 +90,13 @@ provider with a model, system prompt, context limit, and tool allowlist.
       "maxContextTokens": 128000,
       "maxToolRounds": 32,
       "maxToolCallsPerSession": 500,
+      "contextBuilder": "sliding",
       "tools": ["shell", "read_file", "write_file", "list_dir", "glob", "web_fetch"]
     }
   ],
   "defaultAgent": "coder",
   "includeUsage": true,
+  "contextWindowRatio": 0.75,
   "sessionsDir": "~/.config/mrsmith/sessions",
   "projectSkillsDir": "./skills",
   "globalSkillsDir": "~/.config/mrsmith/skills"
@@ -115,6 +120,9 @@ provider with a model, system prompt, context limit, and tool allowlist.
 | `agents[].tools` | Allowlist of built-in tools (optional; `edit`, `todowrite`, `question`, `skill`, `task` are always available) |
 | `agents[].shellHarmlessCommands` | Command specs promoted to read-only on top of the built-in defaults (e.g. `"kubectl get"`); one token (`"ps"`) allows the whole binary, two tokens allow that subcommand only |
 | `agents[].shellDangerousCommands` | Command specs forced to require approval, taking precedence over the safe lists (e.g. `"mydeploy --push"`) |
+| `agents[].contextBuilder` | Context strategy for this agent: `full` (default) or `sliding`; overrides the global default (optional) |
+| `contextBuilder` | Global default context strategy (`full` or `sliding`), applied to agents without their own override (optional, default `full`) |
+| `contextWindowRatio` | Fraction of the agent's `maxContextTokens` to keep in a sliding window (optional, default `0.75`, must be in `(0, 1]`) |
 | `defaultAgent` | Agent used at startup (required, must match an agent) |
 | `includeUsage` | Send `stream_options.include_usage` for real token counts (default `true`; set `false` if your provider rejects it with a 400) |
 | `sessionsDir` | Where session transcripts are stored (default `~/.config/mrsmith/sessions`) |
@@ -129,6 +137,11 @@ read from `MRSMITH_<PROVIDER>_API_KEY` (provider name uppercased, dashes →
 underscores), which overrides the `providers[].apiKey` file value — so keys
 can be kept out of the config file. Provider names that differ only in
 separators (e.g. `my-provider` vs `my_provider`) map to the same env var.
+
+The context-builder strategy (`--context-builder` / `MRSMITH_CONTEXT_BUILDER`) and
+window ratio (`--context-window-ratio` / `MRSMITH_CONTEXT_WINDOW_RATIO`) follow the
+same precedence and set the global default; each agent may override the strategy
+with its own `contextBuilder` field.
 
 ---
 

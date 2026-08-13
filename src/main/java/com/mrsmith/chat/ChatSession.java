@@ -34,7 +34,7 @@ public class ChatSession {
 
     private final IO io;
     private final TranscriptWriter transcripts;
-    private final ContextBuilder contextBuilder;
+    private final ContextBuilderFactory contextBuilderFactory;
     private final AgentCatalog agents;
     private final ProviderFactory providerFactory;
     private final ToolRegistryFactory toolRegistryFactory;
@@ -54,14 +54,15 @@ public class ChatSession {
     private SubAgentRunner subAgentRunner;
     private ToolBudget toolBudget;
     private ToolApproval toolApproval = new ToolApproval();
+    private ContextBuilder contextBuilder;
 
-    public ChatSession(IO io, TranscriptWriter transcripts, ContextBuilder contextBuilder,
+    public ChatSession(IO io, TranscriptWriter transcripts, ContextBuilderFactory contextBuilderFactory,
                        AgentCatalog agents, ProviderFactory providerFactory,
                        ToolRegistryFactory toolRegistryFactory, SkillCatalog skills,
                        String initialAgentName) {
         this.io = io;
         this.transcripts = transcripts;
-        this.contextBuilder = contextBuilder;
+        this.contextBuilderFactory = contextBuilderFactory;
         this.agents = agents;
         this.providerFactory = providerFactory;
         this.toolRegistryFactory = toolRegistryFactory;
@@ -158,7 +159,9 @@ public class ChatSession {
         warned100 = false;
         toolBudget = new ToolBudget(runtime.agent().maxToolCallsPerSession(), io);
         toolApproval.reset();
-        contextBuilder.start(composeSystemPrompt(runtime.agent().systemPrompt()));
+        contextBuilder = contextBuilderFactory.create(runtime);
+        contextBuilder.start(composeSystemPrompt(runtime.agent().systemPrompt()),
+                ContextBuilders.windowBudget(runtime));
         toolRegistry.resetSession();
         subAgentRunner.reset();
         startNewSession();

@@ -89,8 +89,8 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
         if (resume && sid == null) {
             return new TaskResult(null, "Unknown task_id: " + taskId, true);
         }
-        FullContextBuilder context = new FullContextBuilder();
-        context.start(config.agent().systemPrompt());
+        ContextBuilder context = ContextBuilders.create(config);
+        context.start(config.agent().systemPrompt(), ContextBuilders.windowBudget(config));
         List<ChatMessage> replayed = List.of();
         if (resume) {
             try {
@@ -142,7 +142,7 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
         }
     }
 
-    private ToolLoop.Sink sinkFor(FullContextBuilder context, TranscriptWriter transcripts) {
+    private ToolLoop.Sink sinkFor(ContextBuilder context, TranscriptWriter transcripts) {
         return new ToolLoop.Sink() {
             @Override
             public void assistantWithToolCalls(ChatMessage message, List<ToolCall> calls) {
@@ -181,7 +181,7 @@ public final class SubAgentRunner implements TaskRunner, Resettable {
         return message == null ? e.getClass().getSimpleName() : message;
     }
 
-    private static void replay(FullContextBuilder context, ChatMessage message) {
+    private static void replay(ContextBuilder context, ChatMessage message) {
         switch (message.role()) {
             case SYSTEM -> context.appendSystem(message.content());
             case USER -> context.appendUser(message.content());

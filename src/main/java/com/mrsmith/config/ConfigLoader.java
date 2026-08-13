@@ -39,9 +39,17 @@ public final class ConfigLoader {
         }
 
         List<ProviderConfig> providers = parseProviders(root, env);
-        List<AgentConfig> agents = parseAgents(root);
+        ContextStrategy defaultStrategy = ContextStrategy.parse(firstNonNull(
+                cli.contextBuilder(),
+                env.get("MRSMITH_CONTEXT_BUILDER"),
+                root.hasNonNull("contextBuilder") ? root.get("contextBuilder").asText() : null));
+        List<AgentConfig> agents = parseAgents(root, defaultStrategy);
         String defaultAgent = root.hasNonNull("defaultAgent") ? root.get("defaultAgent").asText() : null;
         boolean includeUsage = !root.hasNonNull("includeUsage") || root.get("includeUsage").asBoolean();
+        double contextWindowRatio = parseRatio(firstNonNull(
+                cli.contextWindowRatio() == null ? null : cli.contextWindowRatio().toString(),
+                env.get("MRSMITH_CONTEXT_WINDOW_RATIO"),
+                root.hasNonNull("contextWindowRatio") ? root.get("contextWindowRatio").asText() : null));
 
         String sessionsDir = firstNonNull(
                 cli.sessionsDir() == null ? null : cli.sessionsDir().toString(),
@@ -57,7 +65,7 @@ public final class ConfigLoader {
                 System.getProperty("user.home"), AgentCatalog.defaultGlobalSkillsDir());
 
         return new AgentCatalog(providers, agents, defaultAgent, includeUsage, Path.of(sessionsDir),
-                projectSkillsDir, globalSkillsDir);
+                projectSkillsDir, globalSkillsDir, contextWindowRatio);
     }
 
     private static Path skillDir(String configured, String anchor, Path defaultPath) {
@@ -92,7 +100,7 @@ public final class ConfigLoader {
         return name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "_");
     }
 
-    private static List<AgentConfig> parseAgents(JsonNode root) {
+    private static List<AgentConfig> parseAgents(JsonNode root, ContextStrategy defaultStrategy) {
         List<AgentConfig> result = new ArrayList<>();
         JsonNode arr = root.path("agents");
         if (arr.isArray()) {
@@ -107,7 +115,10 @@ public final class ConfigLoader {
                         node.hasNonNull("maxToolCallsPerSession") ? node.get("maxToolCallsPerSession").asInt() : null,
                         parseTools(node),
                         parseStringList(node, "shellHarmlessCommands"),
-                        parseStringList(node, "shellDangerousCommands")));
+                        parseStringList(node, "shellDangerousCommands"),
+                        node.hasNonNull("contextBuilder")
+                                ? ContextStrategy.parse(node.get("contextBuilder").asText())
+                                : defaultStrategy));
             }
         }
         return result;
@@ -144,5 +155,21 @@ public final class ConfigLoader {
             }
         }
         return null;
+    }
+
+    private static double parseRatio(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return AgentRuntime.DEFAULT_CONTEXT_WINDOW_RATIO;
+        }
+        double value;
+        try {
+            value = Double.parseDouble(raw.trim());
+        } catch (NumberFormatException e) {
+            throw new ConfigException("Invalid contextWindowRatio: " + raw);
+        }
+        if (!Double.isFinite(value) || value <= 0 || value > 1) {
+            throw new ConfigException("contextWindowRatio must be in (0, 1]: " + raw);
+        }
+        return value;
     }
 }
