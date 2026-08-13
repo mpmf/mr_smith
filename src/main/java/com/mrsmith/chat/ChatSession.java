@@ -97,7 +97,8 @@ public class ChatSession {
                 tracker.recordTurn(turn.usage(), turn.estimated());
                 String usageLine = tracker.lastTurnLine();
                 if (!usageLine.isEmpty()) {
-                    io.writeLine(usageLine);
+                    io.writeLine(usageLine + String.format(Locale.US, " · context %,d (est.)",
+                            contextBuilder.estimatedTokens()));
                 }
                 warnIfNearLimit();
             } catch (ProviderException e) {
@@ -375,6 +376,8 @@ public class ChatSession {
             report.append(String.format(Locale.US, "%n  context limit: %,d configured (%d%% used)",
                     runtime.agent().maxContextTokens(), pctOfMax()));
         }
+        report.append(String.format(Locale.US, "%n  context: %,d tokens (est.)",
+                contextBuilder.estimatedTokens()));
         report.append(String.format(Locale.US, "%n  history: %d messages", history.size()));
         if (toolBudget != null && !toolBudget.isUnlimited()) {
             report.append(String.format(Locale.US, "%n  tool calls: %d/%d", toolBudget.used(), toolBudget.limit()));
