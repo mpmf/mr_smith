@@ -167,7 +167,7 @@ public final class ConfigLoader {
         } catch (NumberFormatException e) {
             throw new ConfigException("Invalid contextWindowRatio: " + raw);
         }
-        if (value <= 0 || value > 1) {
+        if (!Double.isFinite(value) || value <= 0 || value > 1) {
             throw new ConfigException("contextWindowRatio must be in (0, 1]: " + raw);
         }
         return value;

@@ -41,13 +41,4 @@ public record AgentConfig(String name, String provider, String model,
         this(name, provider, model, systemPrompt, maxContextTokens, maxToolRounds,
                 maxToolCallsPerSession, tools, List.of(), List.of(), ContextStrategy.FULL);
     }
-
-    public AgentConfig(String name, String provider, String model,
-                       String systemPrompt, Integer maxContextTokens, Integer maxToolRounds,
-                       Integer maxToolCallsPerSession, List<String> tools,
-                       List<String> shellHarmlessCommands, List<String> shellDangerousCommands) {
-        this(name, provider, model, systemPrompt, maxContextTokens, maxToolRounds,
-                maxToolCallsPerSession, tools, shellHarmlessCommands, shellDangerousCommands,
-                ContextStrategy.FULL);
-    }
 }
