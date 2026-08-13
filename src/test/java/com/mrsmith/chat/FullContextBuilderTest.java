@@ -107,4 +107,13 @@ class FullContextBuilderTest {
         assertEquals(Role.SYSTEM, context.get(2).role());
         assertEquals("Available skills:\n- coding: x", context.get(2).content());
     }
+
+    @Test
+    void estimatedTokensSumsMessages() {
+        FullContextBuilder builder = new FullContextBuilder();
+        builder.start(null);
+        builder.appendUser("hello");    // 2 tokens
+        builder.appendAssistant("hi");  // 1 token
+        assertEquals(3, builder.estimatedTokens());
+    }
 }

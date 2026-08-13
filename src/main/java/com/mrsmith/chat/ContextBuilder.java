@@ -1,6 +1,7 @@
 package com.mrsmith.chat;
 
 import com.mrsmith.provider.ChatMessage;
+import com.mrsmith.provider.TokenEstimator;
 import com.mrsmith.provider.ToolCall;
 
 import java.util.List;
@@ -24,4 +25,12 @@ public interface ContextBuilder {
     void appendSystem(String content);
 
     List<ChatMessage> messages();
+
+    default int estimatedTokens() {
+        int total = 0;
+        for (ChatMessage message : messages()) {
+            total += TokenEstimator.estimateMessageTokens(message);
+        }
+        return total;
+    }
 }
