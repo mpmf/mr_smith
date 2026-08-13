@@ -7,7 +7,11 @@ import java.util.List;
 
 public interface ContextBuilder {
 
-    void start(String systemPrompt);
+    default void start(String systemPrompt) {
+        start(systemPrompt, 0);
+    }
+
+    void start(String systemPrompt, int windowBudgetTokens);
 
     void appendUser(String content);
 

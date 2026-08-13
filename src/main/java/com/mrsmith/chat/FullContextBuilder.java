@@ -12,7 +12,7 @@ public class FullContextBuilder implements ContextBuilder {
     private final List<ChatMessage> context = new ArrayList<>();
 
     @Override
-    public void start(String systemPrompt) {
+    public void start(String systemPrompt, int windowBudgetTokens) {
         context.clear();
         if (systemPrompt != null) {
             context.add(new ChatMessage(Role.SYSTEM, systemPrompt));
