@@ -153,7 +153,7 @@ class ChatSessionTest {
         StubIo io = new StubIo(List.of("hello", "/exit"));
         ChatSession session = session(provider, io, transcripts, catalog());
         session.run();
-        assertTrue(io.lines.contains("tokens: 1,200 in · 300 out · total 1,500 · session 1,500"));
+        assertTrue(io.lines.contains("tokens: 1,200 in · 300 out · total 1,500 · session 1,500 · context 6 (est.)"));
     }
 
     @Test
@@ -163,7 +163,7 @@ class ChatSessionTest {
         StubIo io = new StubIo(List.of("hello", "/exit"));
         ChatSession session = session(provider, io, transcripts, catalog());
         session.run();
-        assertTrue(io.lines.contains("tokens: 100 in (est.) · 50 out (est.) · total 150 · session 150 (est.)"));
+        assertTrue(io.lines.contains("tokens: 100 in (est.) · 50 out (est.) · total 150 · session 150 (est.) · context 6 (est.)"));
     }
 
     @Test
@@ -176,6 +176,7 @@ class ChatSessionTest {
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("Session usage:")));
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("  total:       1,500")));
         assertTrue(io.lines.stream().anyMatch(l -> l.contains("  history: 2 messages")));
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("  context: 6 tokens (est.)")));
     }
 
     @Test

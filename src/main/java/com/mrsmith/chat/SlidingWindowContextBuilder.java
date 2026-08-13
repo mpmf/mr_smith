@@ -64,6 +64,11 @@ public class SlidingWindowContextBuilder implements ContextBuilder {
         return List.copyOf(result);
     }
 
+    @Override
+    public int estimatedTokens() {
+        return systemTokens + turnTokens;
+    }
+
     private void addSystem(ChatMessage message) {
         system.add(message);
         systemTokens += TokenEstimator.estimateMessageTokens(message);

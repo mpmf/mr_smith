@@ -116,4 +116,31 @@ class SlidingWindowContextBuilderTest {
         assertThrows(UnsupportedOperationException.class,
                 () -> context.add(new ChatMessage(Role.USER, "x")));
     }
+
+    @Test
+    void estimatedTokensIsZeroWhenEmpty() {
+        SlidingWindowContextBuilder builder = new SlidingWindowContextBuilder();
+        builder.start(null, 1000);
+        assertEquals(0, builder.estimatedTokens());
+    }
+
+    @Test
+    void estimatedTokensMatchesCurrentWindow() {
+        SlidingWindowContextBuilder builder = new SlidingWindowContextBuilder();
+        builder.start(null, 1000);
+        builder.appendUser("hello");    // 2 tokens
+        builder.appendAssistant("hi");  // 1 token
+        assertEquals(3, builder.estimatedTokens());
+    }
+
+    @Test
+    void estimatedTokensDropsAfterTrim() {
+        SlidingWindowContextBuilder builder = new SlidingWindowContextBuilder();
+        builder.start(null, 5);
+        builder.appendUser("1111");          // 1 token
+        builder.appendAssistant("22222222"); // 2 tokens (turn 1 = 3)
+        builder.appendUser("33333333");      // 2 tokens (total 5)
+        builder.appendAssistant("4444");     // 1 token -> total 6, drop turn 1
+        assertEquals(3, builder.estimatedTokens());
+    }
 }
