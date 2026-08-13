@@ -58,8 +58,8 @@ the **context** sent to the provider.
 - **Trim-on-append:** the window is trimmed incrementally after each
   non-system append, always from the front.
 - **Estimation:** per-message token estimation (content + tool call
-  id/name/arguments + tool-call id for results, plus small fixed overheads),
-  reusing the existing `TokenEstimator` heuristic.
+  id/name/arguments + tool-call id for results), reusing the existing
+  `TokenEstimator` heuristic.
 - **Selection plumbing:** a `ContextBuilderFactory` (mirroring the existing
   `ProviderFactory`/`ToolRegistryFactory` seams) maps an `AgentRuntime` to a
   builder. `ChatSession` recreates the builder whenever the agent changes.
