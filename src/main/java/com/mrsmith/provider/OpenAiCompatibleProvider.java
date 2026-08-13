@@ -123,7 +123,7 @@ public class OpenAiCompatibleProvider implements Provider {
     private Usage estimateUsage(List<ChatMessage> context, String replyContent, String thinking) {
         int prompt = 0;
         for (ChatMessage message : context) {
-            prompt += TokenEstimator.estimateTokens(message.content());
+            prompt += TokenEstimator.estimateMessageTokens(message);
         }
         int completion = TokenEstimator.estimateTokens(replyContent);
         if (thinking != null) {
