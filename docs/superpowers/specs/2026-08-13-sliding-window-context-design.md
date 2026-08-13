@@ -23,8 +23,9 @@ the **context** sent to the provider.
   dropped.
 - Keep assistant tool-call messages and their tool-result messages together as
   one atomic unit; never drop one without the other.
-- Make the strategy selectable via config/env/CLI, with a configurable window
-  ratio (fraction of the agent's context limit).
+- Make the strategy selectable via config/env/CLI with a global default that
+  each agent can override, plus a configurable window ratio (fraction of the
+  agent's context limit).
 - Apply the same strategy to sub-agents.
 
 ## Non-goals (this iteration)
@@ -32,19 +33,23 @@ the **context** sent to the provider.
 - Summarization/compaction of old turns.
 - Changing the near-limit warnings (`warnIfNearLimit`) that are based on
   cumulative session usage — see "Known interaction" below.
-- Per-agent strategy selection (strategy is global, like `includeUsage`).
+- Per-agent window ratio (the ratio is global; only the strategy is per-agent).
 - Cost tracking.
 
 ## Decisions
 
-- **Strategy and ratio are global** settings, mirroring `includeUsage`. The
-  budget's `maxContextTokens` remains per-agent.
-  - `contextBuilder`: `"full"` (default) | `"sliding"`.
-  - `contextWindowRatio`: double, default `0.75` (fraction of the agent's
-    context limit to use as the window).
-  - Env vars: `MRSMITH_CONTEXT_BUILDER`, `MRSMITH_CONTEXT_WINDOW_RATIO`.
-  - CLI flags: `--context-builder <full|sliding>`, `--context-window-ratio <0..1>`.
-  - Precedence: CLI > env > file > defaults (as with `sessionsDir`).
+- **Strategy is per-agent with a global default.**
+  - Global (top-level) `contextBuilder`: `"full"` (default) | `"sliding"`. This
+    is the default applied to every agent.
+  - Per-agent `contextBuilder`: optional override; when set, it takes precedence
+    for that agent. Effective strategy = agent's value, else the global default.
+  - Env/CLI set the **global default**: `MRSMITH_CONTEXT_BUILDER`,
+    `--context-builder <full|sliding>`.
+  - Precedence for the global default: CLI > env > file > `"full"`.
+- **Window ratio is global.** `contextWindowRatio`: double, default `0.75`
+  (fraction of the agent's context limit to use as the window).
+  - Env/CLI: `MRSMITH_CONTEXT_WINDOW_RATIO`, `--context-window-ratio <0..1>`.
+  - Precedence: CLI > env > file > `0.75`.
 - **Budget:** `round((maxContextTokens > 0 ? maxContextTokens : DEFAULT_BUDGET) * ratio)`.
   `DEFAULT_BUDGET = 100_000` is used when `maxContextTokens` is unset or ≤ 0.
 - **Atomic unit is the turn:** a `USER` message through every following
@@ -55,8 +60,9 @@ the **context** sent to the provider.
 - **Estimation:** per-message token estimation (content + tool call
   id/name/arguments + tool-call id for results, plus small fixed overheads),
   reusing the existing `TokenEstimator` heuristic.
-- **Selection plumbing:** `ChatCommand` picks the builder type from the global
-  strategy; `ChatSession` passes the per-agent budget to `start(...)`.
+- **Selection plumbing:** a `ContextBuilderFactory` (mirroring the existing
+  `ProviderFactory`/`ToolRegistryFactory` seams) maps an `AgentRuntime` to a
+  builder. `ChatSession` recreates the builder whenever the agent changes.
 
 ## Architecture
 
@@ -65,8 +71,9 @@ New types:
 | Type | Package | Responsibility |
 |---|---|---|
 | `ContextStrategy` (enum) | `config` | `FULL`, `SLIDING`, with case-insensitive `parse(String)` |
+| `ContextBuilderFactory` | `chat` | `ContextBuilder create(AgentRuntime)` functional seam |
 | `SlidingWindowContextBuilder` | `chat` | Bounded window: pinned system messages + most recent turns within budget |
-| `ContextBuilders` | `chat` | `create(ContextStrategy)` returns the right builder; `windowBudget(AgentRuntime)` computes the budget (default-budget + ratio handling) |
+| `ContextBuilders` | `chat` | `create(AgentRuntime)` returns the right builder from the agent's effective strategy; `windowBudget(AgentRuntime)` computes the budget (default-budget + ratio handling) |
 
 Changed types:
 
@@ -76,14 +83,14 @@ Changed types:
 | `FullContextBuilder` | implements `start(String, int)` ignoring the budget |
 | `TokenEstimator` | add `estimateMessageTokens(ChatMessage)` |
 | `OpenAiCompatibleProvider` | `estimateUsage` reuses `estimateMessageTokens` for prompt estimate |
-| `AgentConfig` | unchanged (budget stays per-agent via `maxContextTokens`) |
-| `AgentRuntime.Globals` | add `contextStrategy`, `contextWindowRatio` |
-| `AgentCatalog` | add `contextStrategy`, `contextWindowRatio` fields + accessors |
-| `ConfigLoader` | parse `contextBuilder`, `contextWindowRatio` (CLI > env > file > defaults); validate ratio `(0, 1]` and strategy value |
+| `AgentConfig` | add `contextBuilder` (`ContextStrategy`, effective, resolved at load) |
+| `AgentRuntime.Globals` | add `contextWindowRatio` |
+| `AgentCatalog` | add `contextWindowRatio` field + accessor |
+| `ConfigLoader` | parse global default `contextBuilder` + `contextWindowRatio` (CLI > env > file > defaults); bake effective per-agent `contextBuilder` into each `AgentConfig`; validate ratio `(0, 1]` and strategy values |
 | `CliConfig` | add `contextBuilder`, `contextWindowRatio` |
-| `ChatCommand` | `--context-builder`, `--context-window-ratio` flags; pick builder via `ContextBuilders.create(catalog.contextStrategy())` |
-| `ChatSession` | `startFreshSession()` calls `contextBuilder.start(prompt, ContextBuilders.windowBudget(runtime))` |
-| `SubAgentRunner` | build the right builder from `config.globals().contextStrategy()`; pass budget at `start` |
+| `ChatCommand` | `--context-builder`, `--context-window-ratio` flags; inject `ContextBuilders::create` |
+| `ChatSession` | hold a `ContextBuilderFactory` (replaces the injected `ContextBuilder`); recreate the builder in `startFreshSession()` from `runtime`; call `start(prompt, ContextBuilders.windowBudget(runtime))` |
+| `SubAgentRunner` | use `ContextBuilders.create(config)` (change `FullContextBuilder` refs to `ContextBuilder`); pass budget at `start` |
 
 ## `SlidingWindowContextBuilder` algorithm
 
@@ -122,22 +129,23 @@ the sliding builder (defensive; production always passes a real budget).
 
 ```
 ChatCommand:
-    builder = ContextBuilders.create(catalog.contextStrategy())   // full or sliding
-    ChatSession(io, transcripts, builder, ...)
+    ContextBuilderFactory factory = ContextBuilders::create
+    ChatSession(io, transcripts, factory, ...)
 
-ChatSession.startFreshSession():                                  // start, /reset, /agent
-    builder.start(composeSystemPrompt(...), ContextBuilders.windowBudget(runtime))
+ChatSession.startFreshSession():                              // start, /reset, /agent
+    contextBuilder = contextBuilderFactory.create(runtime)    // full or sliding, per agent
+    contextBuilder.start(composeSystemPrompt(...), ContextBuilders.windowBudget(runtime))
 
 turn loop:
-    builder.appendUser(line)
-    ToolLoop.run(builder, ...) → provider.send(builder.messages(), ...)
-        tool rounds call builder.appendAssistantToolCalls / appendToolResult
-    builder.appendAssistant(reply.content())
+    contextBuilder.appendUser(line)
+    ToolLoop.run(contextBuilder, ...) → provider.send(contextBuilder.messages(), ...)
+        tool rounds call contextBuilder.appendAssistantToolCalls / appendToolResult
+    contextBuilder.appendAssistant(reply.content())
 
 SubAgentRunner.run(...):
-    builder = ContextBuilders.create(config.globals().contextStrategy())
-    builder.start(config.agent().systemPrompt(), ContextBuilders.windowBudget(config))
-    ... ToolLoop.run(builder, ...)
+    contextBuilder = ContextBuilders.create(config)
+    contextBuilder.start(config.agent().systemPrompt(), ContextBuilders.windowBudget(config))
+    ... ToolLoop.run(contextBuilder, ...)
 ```
 
 ## Error Handling & edge cases
@@ -145,10 +153,12 @@ SubAgentRunner.run(...):
 | Scenario | Behavior |
 |---|---|
 | `maxContextTokens` unset or ≤ 0 | Use `DEFAULT_BUDGET` (100_000) |
+| Agent has no `contextBuilder` override | Uses the global default |
+| Global default unset | `"full"` |
 | System messages alone exceed budget | Keep them (pinned); no turns dropped |
 | Current turn alone exceeds budget | Keep it intact |
 | Under budget | Accumulate exactly like `FullContextBuilder` |
-| `/reset` / agent switch | `start(...)` re-seeds and resets the window |
+| `/reset` / agent switch | Builder recreated; `start(...)` re-seeds and resets the window |
 | Invalid `contextBuilder` / `contextWindowRatio` | `ConfigException` at load |
 | Tool call without its result (window boundary) | Cannot happen — turn is atomic |
 
@@ -167,8 +177,11 @@ them unchanged; a follow-up may suppress or reword them when sliding is active.
   accumulation equals full; `start` resets; `messages()` immutable.
 - `TokenEstimatorTest` — `estimateMessageTokens` for plain, tool-call, and
   tool-result messages.
-- `ConfigLoaderTest` — `contextBuilder`/`contextWindowRatio` parsing, defaults,
-  precedence, invalid-value rejection.
+- `ConfigLoaderTest` — global default `contextBuilder` and `contextWindowRatio`
+  parsing, per-agent override resolution, defaults, precedence, invalid-value
+  rejection.
 - `ChatCommandTest` — `--context-builder`/`--context-window-ratio` flags.
-- `ChatSessionTest` — budget passed to `start` (via a recording stub builder).
-- `SubAgentRunnerTest` — sliding builder used when strategy is `sliding`.
+- `ChatSessionTest` — builder recreated from the factory on agent switch; budget
+  passed to `start` (via a recording stub builder/factory).
+- `SubAgentRunnerTest` — sliding builder used when the agent's strategy is
+  `sliding`.
