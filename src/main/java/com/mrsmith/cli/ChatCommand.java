@@ -1,8 +1,8 @@
 package com.mrsmith.cli;
 
 import com.mrsmith.chat.ChatSession;
-import com.mrsmith.chat.ContextBuilder;
-import com.mrsmith.chat.FullContextBuilder;
+import com.mrsmith.chat.ContextBuilderFactory;
+import com.mrsmith.chat.ContextBuilders;
 import com.mrsmith.config.AgentCatalog;
 import com.mrsmith.config.ConfigException;
 import com.mrsmith.config.ConfigLoader;
@@ -57,9 +57,9 @@ public class ChatCommand implements Callable<Integer> {
         }
         IO io = new ReplIo();
         TranscriptWriter transcripts = new FileTranscriptWriter(catalog.sessionsDir());
-        ContextBuilder contextBuilder = new FullContextBuilder();
+        ContextBuilderFactory contextBuilderFactory = ContextBuilders::create;
         SkillCatalog skills = SkillCatalog.discover(catalog.projectSkillsDir(), catalog.globalSkillsDir());
-        ChatSession session = new ChatSession(io, transcripts, contextBuilder, catalog,
+        ChatSession session = new ChatSession(io, transcripts, contextBuilderFactory, catalog,
                 OpenAiCompatibleProvider::new,
                 (runtime, skillCatalog, terminalIo, taskRunner) -> ToolRegistry.with(
                         runtime.agent().tools(), skillCatalog, terminalIo, taskRunner,
