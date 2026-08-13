@@ -27,4 +27,19 @@ class ChatCommandTest {
             System.setOut(original);
         }
     }
+
+    @Test
+    void helpListsContextBuilderFlags() {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PrintStream original = System.out;
+        System.setOut(new PrintStream(out));
+        try {
+            int exit = new CommandLine(new ChatCommand()).execute("--help");
+            assertEquals(0, exit);
+            assertTrue(out.toString().contains("--context-builder"));
+            assertTrue(out.toString().contains("--context-window-ratio"));
+        } finally {
+            System.setOut(original);
+        }
+    }
 }

@@ -32,11 +32,17 @@ public class ChatCommand implements Callable<Integer> {
     @Option(names = "--sessions-dir", description = "Directory where session transcripts are stored (overrides config file and env).")
     private Path sessionsDir;
 
+    @Option(names = "--context-builder", description = "Context strategy: full or sliding (default full).")
+    private String contextBuilder;
+
+    @Option(names = "--context-window-ratio", description = "Fraction of the context limit to keep in a sliding window (default 0.75).")
+    private Double contextWindowRatio;
+
     @Override
     public Integer call() {
         AgentCatalog catalog;
         try {
-            catalog = ConfigLoader.load(new CliConfig(agent, sessionsDir));
+            catalog = ConfigLoader.load(new CliConfig(agent, sessionsDir, contextBuilder, contextWindowRatio));
         } catch (ConfigException e) {
             System.err.println(e.getMessage());
             return 1;
