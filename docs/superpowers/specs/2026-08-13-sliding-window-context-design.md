@@ -42,6 +42,9 @@ the **context** sent to the provider.
   - `contextBuilder`: `"full"` (default) | `"sliding"`.
   - `contextWindowRatio`: double, default `0.75` (fraction of the agent's
     context limit to use as the window).
+  - Env vars: `MRSMITH_CONTEXT_BUILDER`, `MRSMITH_CONTEXT_WINDOW_RATIO`.
+  - CLI flags: `--context-builder <full|sliding>`, `--context-window-ratio <0..1>`.
+  - Precedence: CLI > env > file > defaults (as with `sessionsDir`).
 - **Budget:** `round((maxContextTokens > 0 ? maxContextTokens : DEFAULT_BUDGET) * ratio)`.
   `DEFAULT_BUDGET = 100_000` is used when `maxContextTokens` is unset or ≤ 0.
 - **Atomic unit is the turn:** a `USER` message through every following
@@ -111,6 +114,9 @@ The current (last) turn is never dropped, even if it alone exceeds the budget.
 System messages are never dropped, even if they alone exceed the budget.
 
 `messages()` returns an immutable snapshot of `system` + `turns`.
+
+A `windowBudgetTokens ≤ 0` passed to `start` is treated as `DEFAULT_BUDGET` by
+the sliding builder (defensive; production always passes a real budget).
 
 ## Data Flow (one session)
 
