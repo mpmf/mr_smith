@@ -372,6 +372,22 @@ class ConfigLoaderTest {
         assertTrue(runtime.agent().shellDangerousCommands().isEmpty());
     }
 
+    @Test
+    void contextStrategyParseIsCaseInsensitive() {
+        assertEquals(ContextStrategy.FULL, ContextStrategy.parse("full"));
+        assertEquals(ContextStrategy.FULL, ContextStrategy.parse("FULL"));
+        assertEquals(ContextStrategy.SLIDING, ContextStrategy.parse("sliding"));
+        assertEquals(ContextStrategy.SLIDING, ContextStrategy.parse(" Sliding "));
+        assertEquals(ContextStrategy.FULL, ContextStrategy.parse(null));
+        assertEquals(ContextStrategy.FULL, ContextStrategy.parse("  "));
+    }
+
+    @Test
+    void contextStrategyParseRejectsUnknown() {
+        ConfigException e = assertThrows(ConfigException.class, () -> ContextStrategy.parse("bogus"));
+        assertTrue(e.getMessage().contains("contextBuilder"));
+    }
+
     private Path noFile() {
         return tempDir.resolve("missing.json");
     }
