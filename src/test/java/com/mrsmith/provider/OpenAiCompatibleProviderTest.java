@@ -339,6 +339,43 @@ class OpenAiCompatibleProviderTest {
         assertFalse(request.getBody().readUtf8().contains("reasoning_effort"));
     }
 
+    @Test
+    void reasoningEffortOverrideWinsOverConfigured() throws Exception {
+        server.shutdown();
+        server = new MockWebServer();
+        server.start();
+        AgentRuntime runtime = new AgentRuntime(
+                new AgentConfig("a", "p", "test-model", null, null, null, null,
+                        List.of(), List.of(), List.of(), ContextStrategy.FULL, "low"),
+                new ProviderConfig("p", "sk-test", server.url("/").toString()),
+                new AgentRuntime.Globals(true));
+        provider = new OpenAiCompatibleProvider(runtime, HttpClient.newHttpClient(), 0L);
+        runtime.reasoning().set("high");
+        server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));
+        provider.send(List.of(new ChatMessage(Role.USER, "hello")), List.of(), s -> { }, s -> { });
+        RecordedRequest request = server.takeRequest();
+        assertTrue(request.getBody().readUtf8().contains("\"reasoning_effort\":\"high\""));
+    }
+
+    @Test
+    void reasoningEffortFallsBackToConfigAfterOverrideClear() throws Exception {
+        server.shutdown();
+        server = new MockWebServer();
+        server.start();
+        AgentRuntime runtime = new AgentRuntime(
+                new AgentConfig("a", "p", "test-model", null, null, null, null,
+                        List.of(), List.of(), List.of(), ContextStrategy.FULL, "low"),
+                new ProviderConfig("p", "sk-test", server.url("/").toString()),
+                new AgentRuntime.Globals(true));
+        provider = new OpenAiCompatibleProvider(runtime, HttpClient.newHttpClient(), 0L);
+        runtime.reasoning().set("high");
+        runtime.reasoning().clear();
+        server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));
+        provider.send(List.of(new ChatMessage(Role.USER, "hello")), List.of(), s -> { }, s -> { });
+        RecordedRequest request = server.takeRequest();
+        assertTrue(request.getBody().readUtf8().contains("\"reasoning_effort\":\"low\""));
+    }
+
     private static final ObjectMapper JSON = new ObjectMapper();
 
     static class StubTool implements Tool {
