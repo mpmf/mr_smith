@@ -14,7 +14,7 @@ class ContextBuildersTest {
     private static AgentRuntime runtime(String strategy, Integer maxContext, double ratio) {
         AgentConfig agent = new AgentConfig("a", "p", "m", null, maxContext, null, null,
                 java.util.List.of(), java.util.List.of(), java.util.List.of(),
-                ContextStrategy.parse(strategy));
+                ContextStrategy.parse(strategy), null);
         ProviderConfig provider = new ProviderConfig("p", "sk", "https://example.com/v1");
         return new AgentRuntime(agent, provider, new AgentRuntime.Globals(true, ratio));
     }

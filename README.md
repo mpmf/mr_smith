@@ -90,6 +90,7 @@ provider with a model, system prompt, context limit, and tool allowlist.
       "maxContextTokens": 128000,
       "maxToolRounds": 32,
       "maxToolCallsPerSession": 500,
+      "reasoningEffort": "high",
       "contextBuilder": "sliding",
       "tools": ["shell", "read_file", "write_file", "list_dir", "glob", "web_fetch"]
     }
@@ -117,6 +118,7 @@ provider with a model, system prompt, context limit, and tool allowlist.
 | `agents[].maxContextTokens` | Context window limit; enables limit warnings (optional) |
 | `agents[].maxToolRounds` | Max tool-call rounds per turn (optional, default 32) |
 | `agents[].maxToolCallsPerSession` | Max executed tool calls per session, shared with sub-agents (optional; unlimited by default). Warns at 80% and stops the loop with a graceful message when exhausted |
+| `agents[].reasoningEffort` | Optional `reasoning_effort` value (e.g. `low`, `medium`, `high`) sent verbatim to the provider on every request; omitted when unset or blank |
 | `agents[].tools` | Allowlist of built-in tools (optional; `edit`, `todowrite`, `question`, `skill`, `task` are always available) |
 | `agents[].shellHarmlessCommands` | Command specs promoted to read-only on top of the built-in defaults (e.g. `"kubectl get"`); one token (`"ps"`) allows the whole binary, two tokens allow that subcommand only |
 | `agents[].shellDangerousCommands` | Command specs forced to require approval, taking precedence over the safe lists (e.g. `"mydeploy --push"`) |

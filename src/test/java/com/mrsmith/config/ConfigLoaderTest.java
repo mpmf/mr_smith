@@ -488,6 +488,32 @@ class ConfigLoaderTest {
                 () -> ConfigLoader.load(file, CliConfig.empty(), Map.of()));
     }
 
+    @Test
+    void parsesReasoningEffortPerAgent() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "p", "apiKey": "sk-x", "baseUrl": "https://example.com/v1" } ],
+                  "agents": [ { "name": "a", "provider": "p", "model": "m", "reasoningEffort": "high" } ],
+                  "defaultAgent": "a"
+                }
+                """);
+        AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
+        assertEquals("high", catalog.resolve("a").agent().reasoningEffort());
+    }
+
+    @Test
+    void reasoningEffortDefaultsToNullWhenAbsent() throws IOException {
+        Path file = writeConfig("""
+                {
+                  "providers": [ { "name": "p", "apiKey": "sk-x", "baseUrl": "https://example.com/v1" } ],
+                  "agents": [ { "name": "a", "provider": "p", "model": "m" } ],
+                  "defaultAgent": "a"
+                }
+                """);
+        AgentCatalog catalog = ConfigLoader.load(file, CliConfig.empty(), Map.of());
+        assertEquals(null, catalog.resolve("a").agent().reasoningEffort());
+    }
+
     private Path noFile() {
         return tempDir.resolve("missing.json");
     }

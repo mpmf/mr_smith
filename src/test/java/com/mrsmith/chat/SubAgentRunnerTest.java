@@ -413,7 +413,7 @@ class SubAgentRunnerTest {
         AgentCatalog catalog = new AgentCatalog(
                 List.of(new ProviderConfig("p", "sk-test", "https://example.com/v1")),
                 List.of(new AgentConfig("a", "p", "m", "sys", 6, null, null,
-                        List.of(), List.of(), List.of(), ContextStrategy.SLIDING)),
+                        List.of(), List.of(), List.of(), ContextStrategy.SLIDING, null)),
                 "a", true, tempDir);
         Files.createDirectories(tempDir.resolve(sessionId.toString()));
         FakeProvider provider = new FakeProvider();

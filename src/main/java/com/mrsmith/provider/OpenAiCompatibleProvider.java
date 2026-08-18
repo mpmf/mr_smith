@@ -136,6 +136,10 @@ public class OpenAiCompatibleProvider implements Provider {
         ObjectNode root = JSON.createObjectNode();
         root.put("model", runtime.agent().model());
         root.put("stream", true);
+        String effort = runtime.agent().reasoningEffort();
+        if (effort != null && !effort.isBlank()) {
+            root.put("reasoning_effort", effort);
+        }
         if (runtime.globals().includeUsage()) {
             root.putObject("stream_options").put("include_usage", true);
         }
