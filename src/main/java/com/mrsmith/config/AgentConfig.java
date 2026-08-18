@@ -8,37 +8,38 @@ public record AgentConfig(String name, String provider, String model,
                           List<String> tools,
                           List<String> shellHarmlessCommands,
                           List<String> shellDangerousCommands,
-                          ContextStrategy contextBuilder) {
+                          ContextStrategy contextBuilder,
+                          String reasoningEffort) {
 
     public AgentConfig(String name, String provider, String model,
                        String systemPrompt, Integer maxContextTokens) {
         this(name, provider, model, systemPrompt, maxContextTokens, null, null,
-                List.of(), List.of(), List.of(), ContextStrategy.FULL);
+                List.of(), List.of(), List.of(), ContextStrategy.FULL, null);
     }
 
     public AgentConfig(String name, String provider, String model,
                        String systemPrompt, Integer maxContextTokens, List<String> tools) {
         this(name, provider, model, systemPrompt, maxContextTokens, null, null,
-                tools, List.of(), List.of(), ContextStrategy.FULL);
+                tools, List.of(), List.of(), ContextStrategy.FULL, null);
     }
 
     public AgentConfig(String name, String provider, String model,
                        String systemPrompt, Integer maxContextTokens, Integer maxToolRounds) {
         this(name, provider, model, systemPrompt, maxContextTokens, maxToolRounds, null,
-                List.of(), List.of(), List.of(), ContextStrategy.FULL);
+                List.of(), List.of(), List.of(), ContextStrategy.FULL, null);
     }
 
     public AgentConfig(String name, String provider, String model,
                        String systemPrompt, Integer maxContextTokens, Integer maxToolRounds,
                        Integer maxToolCallsPerSession) {
         this(name, provider, model, systemPrompt, maxContextTokens, maxToolRounds,
-                maxToolCallsPerSession, List.of(), List.of(), List.of(), ContextStrategy.FULL);
+                maxToolCallsPerSession, List.of(), List.of(), List.of(), ContextStrategy.FULL, null);
     }
 
     public AgentConfig(String name, String provider, String model,
                        String systemPrompt, Integer maxContextTokens, Integer maxToolRounds,
                        Integer maxToolCallsPerSession, List<String> tools) {
         this(name, provider, model, systemPrompt, maxContextTokens, maxToolRounds,
-                maxToolCallsPerSession, tools, List.of(), List.of(), ContextStrategy.FULL);
+                maxToolCallsPerSession, tools, List.of(), List.of(), ContextStrategy.FULL, null);
     }
 }

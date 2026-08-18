@@ -118,7 +118,8 @@ public final class ConfigLoader {
                         parseStringList(node, "shellDangerousCommands"),
                         node.hasNonNull("contextBuilder")
                                 ? ContextStrategy.parse(node.get("contextBuilder").asText())
-                                : defaultStrategy));
+                                : defaultStrategy,
+                        null));
             }
         }
         return result;
