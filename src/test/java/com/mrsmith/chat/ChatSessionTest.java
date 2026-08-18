@@ -1093,6 +1093,80 @@ class ChatSessionTest {
         assertEquals(150000, builders.get(1).startBudget);
     }
 
+    @Test
+    void reasoningCommandShowsNotSet() throws Exception {
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("/reasoning", "/exit"));
+        ChatSession session = session(provider, io, transcripts, catalog());
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("Reasoning effort: not set")));
+    }
+
+    @Test
+    void reasoningCommandSetsOverride() throws Exception {
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("/reasoning high", "/reasoning", "/exit"));
+        ChatSession session = session(provider, io, transcripts, catalog());
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("Reasoning effort set to: high")));
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("Reasoning effort: high")));
+    }
+
+    @Test
+    void reasoningCommandClearsOverride() throws Exception {
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("/reasoning high", "/reasoning off", "/reasoning", "/exit"));
+        ChatSession session = session(provider, io, transcripts, catalog());
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("Reasoning effort override cleared")));
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("Reasoning effort: not set")));
+    }
+
+    @Test
+    void resetClearsReasoningOverride() throws Exception {
+        List<AgentRuntime> runtimes = new ArrayList<>();
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("/reasoning high", "/reset", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, ContextBuilderFactory.full(),
+                catalog(), r -> { runtimes.add(r); return provider; }, noToolsFactory(), emptySkills(), "a");
+        session.run();
+        assertEquals(1, runtimes.size());
+        assertFalse(runtimes.get(0).reasoning().isSet());
+    }
+
+    @Test
+    void agentSwitchDropsReasoningOverride() throws Exception {
+        List<AgentRuntime> runtimes = new ArrayList<>();
+        AgentCatalog catalog = new AgentCatalog(
+                List.of(new ProviderConfig("p", "sk-test", "https://example.com/v1")),
+                List.of(new AgentConfig("a", "p", "m", null, null),
+                        new AgentConfig("b", "p", "m", null, null)),
+                "a", true, Path.of("sessions"));
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("/reasoning high", "/agent b", "/exit"));
+        ChatSession session = new ChatSession(io, transcripts, ContextBuilderFactory.full(),
+                catalog, r -> { runtimes.add(r); return provider; }, noToolsFactory(), emptySkills(), "a");
+        session.run();
+        assertEquals(2, runtimes.size());
+        assertTrue(runtimes.get(0).reasoning().isSet());
+        assertFalse(runtimes.get(1).reasoning().isSet());
+    }
+
+    @Test
+    void helpListsReasoningCommand() throws Exception {
+        FakeProvider provider = new FakeProvider();
+        FakeTranscriptWriter transcripts = new FakeTranscriptWriter();
+        StubIo io = new StubIo(List.of("/help", "/exit"));
+        ChatSession session = session(provider, io, transcripts, catalog());
+        session.run();
+        assertTrue(io.lines.stream().anyMatch(l -> l.contains("/reasoning")));
+    }
+
     private AgentCatalog catalog() {
         return catalog(null, null);
     }

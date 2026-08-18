@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mrsmith.config.AgentCatalog;
 import com.mrsmith.config.AgentConfig;
+import com.mrsmith.config.AgentRuntime;
 import com.mrsmith.config.ContextStrategy;
 import com.mrsmith.config.ProviderConfig;
 import com.mrsmith.io.IO;
@@ -451,5 +452,31 @@ class SubAgentRunnerTest {
         assertFalse(result.error());
         assertTrue(Files.exists(tempDir.resolve("subagent-file.txt")));
         assertTrue(io.lines.stream().noneMatch(l -> l.contains("Run shell(")));
+    }
+
+    @Test
+    void sameAgentSubAgentInheritsReasoningOverrideButNamedDoesNot() throws Exception {
+        Files.createDirectories(tempDir.resolve(sessionId.toString()));
+        AgentCatalog catalog = new AgentCatalog(
+                List.of(new ProviderConfig("p", "sk-test", "https://example.com/v1")),
+                List.of(new AgentConfig("a", "p", "m", null, null),
+                        new AgentConfig("b", "p", "m", null, null)),
+                "a", true, tempDir);
+        AgentRuntime shared = catalog.resolve("a");
+        shared.reasoning().set("high");
+        List<AgentRuntime> created = new ArrayList<>();
+        ProviderFactory factory = runtime -> {
+            created.add(runtime);
+            return new FakeProvider();
+        };
+        SubAgentRunner runner = new SubAgentRunner(new SubAgentRunner.Context(catalog,
+                factory, fixedRegistry(new ToolRegistry(List.of())), emptySkills(),
+                new StubIo(List.of()), new UsageTracker(), () -> shared, () -> sessionId,
+                () -> new ToolBudget(null, new StubIo(List.of())), () -> new ToolApproval()));
+        runner.run("x", null, null);
+        runner.run("y", "b", null);
+        assertEquals(2, created.size());
+        assertTrue(created.get(0).reasoning().isSet());
+        assertFalse(created.get(1).reasoning().isSet());
     }
 }

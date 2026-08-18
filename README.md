@@ -173,6 +173,9 @@ transcripts are written to `<sessionsDir>/<uuid>/transcript.jsonl`.
 | `/skills` | List discovered skills (`*` marks loaded ones) |
 | `/skills <name>` | Load a skill into the context manually |
 | `/tasks` | Show the session task list |
+| `/reasoning` | Show the current `reasoning_effort` (override, config, or "not set") |
+| `/reasoning <value>` | Override `reasoning_effort` for this session |
+| `/reasoning off` | Clear the override (fall back to the configured value) |
 
 Anything else is sent to the LLM. Unknown `/` commands are rejected with a hint.
 
