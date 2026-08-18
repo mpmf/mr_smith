@@ -154,6 +154,7 @@ public class ChatSession {
     }
 
     private void startFreshSession() {
+        runtime.reasoning().clear();
         history.clear();
         tracker.reset();
         warned85 = false;
@@ -244,6 +245,32 @@ public class ChatSession {
                     .append(task.priority()).append("  ").append(task.content());
         }
         io.writeLine(report.toString());
+    }
+
+    private void showReasoningEffort() {
+        String override = runtime.reasoning().override();
+        String configured = runtime.agent().reasoningEffort();
+        boolean hasConfig = configured != null && !configured.isBlank();
+        if (runtime.reasoning().isSet()) {
+            io.writeLine("Reasoning effort: " + override
+                    + (hasConfig ? " (override; config: " + configured + ")" : " (override)"));
+        } else if (hasConfig) {
+            io.writeLine("Reasoning effort: " + configured + " (from config)");
+        } else {
+            io.writeLine("Reasoning effort: not set");
+        }
+    }
+
+    private void setReasoningEffort(String value) {
+        runtime.reasoning().set(value);
+        io.writeLine("Reasoning effort set to: " + value);
+    }
+
+    private void clearReasoningEffort() {
+        runtime.reasoning().clear();
+        String configured = runtime.agent().reasoningEffort();
+        io.writeLine("Reasoning effort override cleared"
+                + ((configured != null && !configured.isBlank()) ? " (config: " + configured + ")" : ""));
     }
 
     private void appendUser(String content) {
@@ -357,6 +384,21 @@ public class ChatSession {
             listTasks();
             return true;
         }
+        if (line.equals("/reasoning")) {
+            showReasoningEffort();
+            return true;
+        }
+        if (line.startsWith("/reasoning ")) {
+            String arg = line.substring("/reasoning ".length()).trim();
+            if (arg.isBlank()) {
+                showReasoningEffort();
+            } else if (arg.equals("off")) {
+                clearReasoningEffort();
+            } else {
+                setReasoningEffort(arg);
+            }
+            return true;
+        }
         switch (line) {
             case "/reset" -> {
                 startFreshSession();
@@ -364,7 +406,7 @@ public class ChatSession {
             }
             case "/agents" -> io.writeLine("Agents: " + String.join(", ", agents.agentNames()));
             case "/usage" -> io.writeLine(usageReport());
-            case "/help" -> io.writeLine("Commands: /exit, /reset, /help, /usage, /agents, /agent <name>, /skills [name], /tasks. Anything else is sent to the LLM.");
+            case "/help" -> io.writeLine("Commands: /exit, /reset, /help, /usage, /agents, /agent <name>, /skills [name], /tasks, /reasoning [value|off]. Anything else is sent to the LLM.");
             default -> io.writeLine("Unknown command: " + line + " (type /help)");
         }
         return true;
