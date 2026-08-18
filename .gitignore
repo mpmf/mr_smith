@@ -5,3 +5,4 @@ target/
 *.class
 .worktrees/
 dependency-reduced-pom.xml
+skills/

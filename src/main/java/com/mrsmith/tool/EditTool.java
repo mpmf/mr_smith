@@ -46,7 +46,8 @@ public final class EditTool implements Tool {
         properties.putObject("oldString").put("type", "string");
         properties.putObject("newString").put("type", "string");
         properties.putObject("replaceAll").put("type", "boolean");
-        schema.putArray("required").add("filePath").add("oldString").add("newString");
+        properties.putObject("justification").put("type", "string");
+        schema.putArray("required").add("filePath").add("oldString").add("newString").add("justification");
         return schema;
     }
 
