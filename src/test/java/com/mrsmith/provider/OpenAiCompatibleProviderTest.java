@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mrsmith.config.AgentConfig;
 import com.mrsmith.config.AgentRuntime;
+import com.mrsmith.config.ContextStrategy;
 import com.mrsmith.config.ProviderConfig;
 import com.mrsmith.tool.Tool;
 import com.mrsmith.tool.ToolResult;
@@ -294,6 +295,48 @@ class OpenAiCompatibleProviderTest {
         provider.send(context, List.of(), s -> { }, s -> { });
         RecordedRequest request = server.takeRequest();
         assertTrue(request.getBody().readUtf8().contains("\"content\":\"\""));
+    }
+
+    @Test
+    void sendsReasoningEffortWhenSet() throws Exception {
+        server.shutdown();
+        server = new MockWebServer();
+        server.start();
+        AgentRuntime runtime = new AgentRuntime(
+                new AgentConfig("a", "p", "test-model", null, null, null, null,
+                        List.of(), List.of(), List.of(), ContextStrategy.FULL, "high"),
+                new ProviderConfig("p", "sk-test", server.url("/").toString()),
+                new AgentRuntime.Globals(true));
+        provider = new OpenAiCompatibleProvider(runtime, HttpClient.newHttpClient(), 0L);
+        server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));
+        provider.send(List.of(new ChatMessage(Role.USER, "hello")), List.of(), s -> { }, s -> { });
+        RecordedRequest request = server.takeRequest();
+        assertTrue(request.getBody().readUtf8().contains("\"reasoning_effort\":\"high\""));
+    }
+
+    @Test
+    void omitsReasoningEffortWhenUnset() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));
+        provider.send(List.of(new ChatMessage(Role.USER, "hello")), List.of(), s -> { }, s -> { });
+        RecordedRequest request = server.takeRequest();
+        assertFalse(request.getBody().readUtf8().contains("reasoning_effort"));
+    }
+
+    @Test
+    void omitsReasoningEffortWhenBlank() throws Exception {
+        server.shutdown();
+        server = new MockWebServer();
+        server.start();
+        AgentRuntime runtime = new AgentRuntime(
+                new AgentConfig("a", "p", "test-model", null, null, null, null,
+                        List.of(), List.of(), List.of(), ContextStrategy.FULL, "  "),
+                new ProviderConfig("p", "sk-test", server.url("/").toString()),
+                new AgentRuntime.Globals(true));
+        provider = new OpenAiCompatibleProvider(runtime, HttpClient.newHttpClient(), 0L);
+        server.enqueue(new MockResponse().setResponseCode(200).setBody("data: [DONE]\n\n"));
+        provider.send(List.of(new ChatMessage(Role.USER, "hello")), List.of(), s -> { }, s -> { });
+        RecordedRequest request = server.takeRequest();
+        assertFalse(request.getBody().readUtf8().contains("reasoning_effort"));
     }
 
     private static final ObjectMapper JSON = new ObjectMapper();
