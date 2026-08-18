@@ -119,7 +119,7 @@ public final class ConfigLoader {
                         node.hasNonNull("contextBuilder")
                                 ? ContextStrategy.parse(node.get("contextBuilder").asText())
                                 : defaultStrategy,
-                        null));
+                        node.path("reasoningEffort").asText(null)));
             }
         }
         return result;
